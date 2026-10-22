@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "esmesayim"
-  }
+  },
+  "targets": {
+    "esmesayim": {
+      "hosting": {
+        "esmesite": [
+          "esmeegitim"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
