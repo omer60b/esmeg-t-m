@@ -29,8 +29,8 @@ import {
   Layers,
   Boxes
 } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { downloadCertificatePdf } from '../utils/certificateGenerator';
+import { LeaderboardView } from './LeaderboardView';
 
 interface TebellugTrackingViewProps {
   trainings: TrainingDocument[];
@@ -88,7 +88,7 @@ const comprehensiveQuestionPool: { category: TrainingCategory; item: TrainingQui
     category: 'bilgi-islem',
     item: {
       id: 'pool_bi_4',
-      question: 'Esme Şirketler Grubu bünyesinde şirket içi gizli müşteri verileri ve şifrelerin WhatsApp veya üçüncü şahıslarla paylaşımı için kural nedir?',
+      question: 'Esme AVM bünyesinde şirket içi gizli müşteri verileri ve şifrelerin WhatsApp veya üçüncü şahıslarla paylaşımı için kural nedir?',
       options: [
         'İş kolaylığı için herkesle serbestçe paylaşılabilir',
         'KVKK ve Bilgi Güvenliği Talimatı uyarınca KESİNLİKLE YASAKTIR ve hukuki/cezai yaptırım doğurur',
@@ -324,95 +324,9 @@ export const TebellugTrackingView: React.FC<TebellugTrackingViewProps> = ({
     }
   };
 
-  // Generate and download formal Certificate PDF with jsPDF
+  // Generate and download formal Certificate PDF with 100% Turkish character fidelity
   const handleDownloadCertificate = (completion: TrainingCompletion) => {
-    const doc = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: 'a4'
-    });
-
-    // Decorative Borders
-    doc.setDrawColor(185, 28, 28); // Esme Red
-    doc.setLineWidth(3);
-    doc.rect(10, 10, 277, 190);
-
-    doc.setDrawColor(217, 119, 6); // Amber Gold
-    doc.setLineWidth(1);
-    doc.rect(13, 13, 271, 184);
-
-    // Header Corporate Title
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
-    doc.setTextColor(185, 28, 28);
-    doc.text("ESME SIRKETLER GRUBU", 148.5, 30, { align: "center" });
-
-    doc.setFontSize(11);
-    doc.setTextColor(75, 85, 99);
-    doc.text(
-      completion.category === 'depocu'
-        ? "MAGAZA ICI DEPO YONETIMI VE SEVKIYAT AKADEMISI"
-        : "KURUMSAL OPERASYON VE BILGI ISLEM AKADEMISI",
-      148.5, 38, { align: "center" }
-    );
-
-    // Certificate Ribbon
-    doc.setFontSize(18);
-    doc.setTextColor(17, 24, 39);
-    doc.text(
-      completion.category === 'depocu'
-        ? "RESMI DEPOCU EGITIM BASARI VE TEBELLUG SERTIFIKASI"
-        : "RESMI EGITIM BASARI VE TEBELLUG SERTIFIKASI",
-      148.5, 54, { align: "center" }
-    );
-
-    // Personnel Info Text
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.setTextColor(31, 41, 55);
-
-    const bodyText = `Isbu resmi belge ile asagida kimligi ve gorev yeri belirtilen personelimizin; Esme Sirketler Grubu bunyesinde yayimlanan resmi talimatname ve operasyon yonergelerini eksiksiz okudugu, rastgele 5 sorudan olusan Resmi Yeterlilik Sinavinda %80 ve uzeri basari gosterdigi ve kurallara harfiyen uyacagini dijital olarak tebellug ettigi resmiyet kazanmistir.`;
-    
-    doc.text(doc.splitTextToSize(bodyText, 240), 148.5, 68, { align: "center" });
-
-    // Information Box Table
-    autoTable(doc, {
-      startY: 84,
-      margin: { left: 35, right: 35 },
-      theme: 'grid',
-      styles: { fontSize: 9.5, cellPadding: 3, font: 'helvetica' },
-      headStyles: { fillColor: [185, 28, 28], textColor: [255, 255, 255], fontStyle: 'bold' },
-      head: [['Parametre', 'Resmi Tebellug Detayi']],
-      body: [
-        ['Tebellug Eden Personel', completion.personnelName],
-        ['Magaza / Sube', `${completion.branchName} (Sube ID: ${completion.branchId})`],
-        ['Egitim Modulu / Sinav', completion.trainingTitle],
-        ['Kategori / Alan', completion.category === 'depocu' ? 'Depocu ve Sevkiyat Egitimi' : 'Bilgi Islem ve Operasyon Egitimi'],
-        ['Sinav Basarisi (Baraj: En az 4/5)', `${completion.quizScore ?? 5} / ${completion.quizTotal ?? 5} (%${Math.round(((completion.quizScore ?? 5) / (completion.quizTotal ?? 5)) * 100)} - BASARILI)`],
-        ['Tebellug Tarih ve Saati', new Date(completion.completedAt).toLocaleString('tr-TR')],
-        ['Sertifika Dogrulama Kodu', completion.certificateId]
-      ]
-    });
-
-    // Signature Area
-    const finalY = 158;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(17, 24, 39);
-
-    doc.text("Tebellug Eden Personel", 55, finalY);
-    doc.text("Dijital Onay ve Islak Imza Kasesi", 55, finalY + 5);
-    doc.setFont("helvetica", "italic");
-    doc.text(completion.personnelName, 55, finalY + 12);
-
-    doc.setFont("helvetica", "bold");
-    doc.text("Genel Yonetim / Onay", 225, finalY);
-    doc.text("Genel Mudurluk & B.I. Koordinatorlugu", 225, finalY + 5);
-    doc.setFont("helvetica", "italic");
-    doc.text("Omer BAS (Genel Yonetici) & Turgut CESUR", 225, finalY + 12);
-
-    // Save
-    doc.save(`Esme_Basari_Sertifikasi_${completion.certificateId}.pdf`);
+    downloadCertificatePdf(completion);
   };
 
   return (
@@ -795,7 +709,7 @@ export const TebellugTrackingView: React.FC<TebellugTrackingViewProps> = ({
                           
                           <div className="border-b border-amber-300 pb-3 mb-4 text-center">
                             <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest block">
-                              ESME ŞİRKETLER GRUBU AKADEMİSİ
+                              ESME AVM AKADEMİSİ
                             </span>
                             <h4 className="font-extrabold text-base text-slate-900 dark:text-white">
                               {generatedCertificate.category === 'depocu'
@@ -965,6 +879,16 @@ export const TebellugTrackingView: React.FC<TebellugTrackingViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Başarı Sıralaması & Resmi Sertifika Albümü Bölümü */}
+      <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+        <LeaderboardView
+          trainings={trainings}
+          completions={completions}
+          currentBranchId={currentBranchId}
+          currentPersonnel={currentPersonnel}
+        />
+      </div>
 
     </div>
   );

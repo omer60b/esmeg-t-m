@@ -3,20 +3,19 @@ import {
   GraduationCap, 
   BookOpen, 
   Video, 
-  ShieldCheck, 
   Settings, 
   Search, 
   LogOut, 
   LogIn, 
-  Layers,
-  FileCheck2
+  FileCheck2,
+  Trophy
 } from 'lucide-react';
 import { TrainingCategory } from '../types';
 import { officialEsmeBranches } from '../mockData';
 
 interface TrainingHeaderProps {
-  activeTab: 'catalog' | 'ebook' | 'video' | 'tebellug' | 'admin';
-  setActiveTab: (tab: 'catalog' | 'ebook' | 'video' | 'tebellug' | 'admin') => void;
+  activeTab: 'catalog' | 'ebook' | 'video' | 'tebellug' | 'leaderboard' | 'admin';
+  setActiveTab: (tab: 'catalog' | 'ebook' | 'video' | 'tebellug' | 'leaderboard' | 'admin') => void;
   selectedCategory: 'all' | TrainingCategory;
   setSelectedCategory: (cat: 'all' | TrainingCategory) => void;
   searchQuery: string;
@@ -36,8 +35,6 @@ interface TrainingHeaderProps {
 export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
   activeTab,
   setActiveTab,
-  selectedCategory,
-  setSelectedCategory,
   searchQuery,
   setSearchQuery,
   currentBranchId,
@@ -46,45 +43,13 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
   setCurrentPersonnel,
   isAdmin,
   setIsAdmin,
-  onOpenAdminAuth,
-  totalCount = 11,
-  bilgiIslemCount = 7,
-  depocuCount = 4
+  onOpenAdminAuth
 }) => {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const currentBranch = officialEsmeBranches.find(b => b.id === currentBranchId) || officialEsmeBranches[0];
 
   return (
     <header className="sticky top-0 z-40 bg-slate-900 border-b border-slate-800 text-white shadow-xl">
-      {/* Top Banner / Corporate Line */}
-      <div className="bg-gradient-to-r from-red-700 via-rose-700 to-amber-600 px-4 py-1.5 text-xs text-white font-medium flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <span className="bg-white/20 px-2 py-0.5 rounded text-[11px] font-semibold tracking-wide uppercase">
-            Esme Şirketler Grubu
-          </span>
-          <span className="hidden sm:inline text-rose-100">
-            Kurumsal Online Eğitim, Bilgilendirme ve Yönerge Portalı
-          </span>
-        </div>
-        <div className="flex items-center space-x-3 text-[11px]">
-          <span className="hidden md:inline text-rose-100">
-            Resmi Prosedürler & SOP Kılavuzları
-          </span>
-          {isAdmin ? (
-            <span className="bg-emerald-500/30 text-emerald-300 px-2 py-0.5 rounded border border-emerald-400/40 flex items-center gap-1 font-semibold">
-              <ShieldCheck className="w-3.5 h-3.5" /> Yetkili Yönetici Modu
-            </span>
-          ) : (
-            <button 
-              onClick={onOpenAdminAuth}
-              className="text-rose-200 hover:text-white underline decoration-rose-400 font-medium cursor-pointer"
-            >
-              Yönetici Girişi
-            </button>
-          )}
-        </div>
-      </div>
-
       {/* Main Navbar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-4">
@@ -100,11 +65,11 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
                   esme<span className="text-red-500">egıtım</span>
                 </span>
                 <span className="text-[10px] bg-red-600/30 text-red-300 font-bold px-1.5 py-0.5 rounded border border-red-500/30 uppercase">
-                  Portal
+                  Esme AVM
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 leading-none">
-                Bilgi İşlem & Depo Eğitim Portalı
+                Esme AVM Bilgi İşlem & Depo Eğitim Portalı
               </p>
             </div>
           </div>
@@ -135,7 +100,7 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
           <nav className="flex items-center gap-1 sm:gap-2">
             <button
               onClick={() => setActiveTab('catalog')}
-              className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all ${
+              className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
                 activeTab === 'catalog'
                   ? 'bg-red-600 text-white shadow-md shadow-red-900/30 font-semibold'
                   : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -147,7 +112,7 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
 
             <button
               onClick={() => setActiveTab('ebook')}
-              className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all ${
+              className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
                 activeTab === 'ebook'
                   ? 'bg-red-600 text-white shadow-md shadow-red-900/30 font-semibold'
                   : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -159,7 +124,7 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
 
             <button
               onClick={() => setActiveTab('video')}
-              className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all ${
+              className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
                 activeTab === 'video'
                   ? 'bg-red-600 text-white shadow-md shadow-red-900/30 font-semibold'
                   : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -171,7 +136,7 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
 
             <button
               onClick={() => setActiveTab('tebellug')}
-              className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all ${
+              className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
                 activeTab === 'tebellug'
                   ? 'bg-red-600 text-white shadow-md shadow-red-900/30 font-semibold'
                   : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -181,10 +146,22 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
               <span className="hidden sm:inline">Tebellüğ & Takip</span>
             </button>
 
+            <button
+              onClick={() => setActiveTab('leaderboard')}
+              className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
+                activeTab === 'leaderboard'
+                  ? 'bg-red-600 text-white shadow-md shadow-red-900/30 font-semibold'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <Trophy className="w-4 h-4 text-amber-400" />
+              <span className="hidden sm:inline">Başarı Sıralaması</span>
+            </button>
+
             {isAdmin && (
               <button
                 onClick={() => setActiveTab('admin')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all ${
+                className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
                   activeTab === 'admin'
                     ? 'bg-amber-600 text-white shadow-md shadow-amber-900/30 font-semibold'
                     : 'text-amber-400 hover:bg-slate-800 hover:text-amber-300'

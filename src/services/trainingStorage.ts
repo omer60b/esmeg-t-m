@@ -8,7 +8,7 @@ import {
   deleteDoc 
 } from 'firebase/firestore';
 import { db, OperationType, handleFirestoreError } from './firebaseService';
-import { TrainingDocument, TrainingCompletion, TrainingCategory } from '../types';
+import { TrainingDocument, TrainingCompletion, TrainingCategory, TrainingAnnouncement } from '../types';
 import { initialTrainings } from '../data/trainingData';
 
 const STORAGE_TRAININGS_KEY = 'esme_akademi_trainings_v2';
@@ -17,11 +17,13 @@ const STORAGE_LEGACY_COMPLETIONS_KEY = 'esme_training_completions';
 const STORAGE_DELETED_IDS_KEY = 'esme_deleted_training_ids_v1';
 const STORAGE_CUSTOM_ADMINS_KEY = 'esme_custom_admins';
 const STORAGE_ADMIN_PASSWORDS_KEY = 'esme_admin_passwords';
+const STORAGE_ANNOUNCEMENTS_KEY = 'esme_training_announcements_v1';
 
 const TRAINING_CATALOG_DOC = doc(db, 'appData', 'trainings_catalog');
 const TRAINING_META_DOC = doc(db, 'appData', 'trainings_meta');
 const TRAINING_COMPLETIONS_DOC = doc(db, 'appData', 'training_completions');
 const ADMIN_ACCOUNTS_DOC = doc(db, 'appData', 'admin_accounts');
+const TRAINING_ANNOUNCEMENTS_DOC = doc(db, 'appData', 'training_announcements');
 const TRAININGS_COLLECTION = collection(db, 'trainings');
 
 // BroadcastChannel for instant multi-tab sync on the same browser
@@ -465,12 +467,60 @@ export async function syncAdminAccountsToFirestore(
   }
 }
 
+const defaultAnnouncements: TrainingAnnouncement[] = [
+  {
+    id: 'ann_default_1',
+    title: 'Acil Operasyonel Duyuru: Kasa Kapanış & Tebellüğ Kontrolleri',
+    content: 'Tüm Esme AVM şubelerimizde görevli kasa ve depo personellerinin güncel yönergeleri okuyup 5 soruluk yeterlilik sınavını tamamlayarak dijital tebellüğ sertifikalarını almaları zorunludur.',
+    priority: 'acil',
+    author: 'Ömer BAŞ & Turgut CESUR',
+    createdAt: '2026-01-15T09:00:00.000Z',
+    updatedAt: '2026-01-15T09:00:00.000Z',
+    isActive: true
+  }
+];
+
+export function getStoredAnnouncements(): TrainingAnnouncement[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_ANNOUNCEMENTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (err) {
+    console.error('Failed to read announcements:', err);
+  }
+  return defaultAnnouncements;
+}
+
+export async function saveAnnouncements(announcements: TrainingAnnouncement[]): Promise<boolean> {
+  try {
+    localStorage.setItem(STORAGE_ANNOUNCEMENTS_KEY, JSON.stringify(announcements));
+    window.dispatchEvent(new CustomEvent('announcements_updated', { detail: announcements }));
+    trainingChannel?.postMessage({ type: 'ANNOUNCEMENTS_UPDATED', announcements });
+
+    try {
+      await setDoc(TRAINING_ANNOUNCEMENTS_DOC, {
+        announcements: JSON.parse(JSON.stringify(announcements)),
+        updatedAt: new Date().toISOString()
+      });
+    } catch (fsErr) {
+      handleFirestoreError(fsErr, OperationType.WRITE, 'appData/training_announcements');
+    }
+    return true;
+  } catch (err) {
+    console.error('Error saving announcements:', err);
+    return false;
+  }
+}
+
 /**
  * Subscribe to real-time training updates from Firestore, localStorage & BroadcastChannel
  */
 export function subscribeToTrainingUpdates(
   onTrainingsUpdate: (trainings: TrainingDocument[]) => void,
-  onCompletionsUpdate: (completions: TrainingCompletion[]) => void
+  onCompletionsUpdate: (completions: TrainingCompletion[]) => void,
+  onAnnouncementsUpdate?: (announcements: TrainingAnnouncement[]) => void
 ): () => void {
   let latestCatalogItems: TrainingDocument[] = [];
   let latestCollectionItems: TrainingDocument[] = [];
@@ -596,7 +646,18 @@ export function subscribeToTrainingUpdates(
     }
   }, () => {});
 
-  // 6. Local CustomEvents, Cross-tab Storage Events & BroadcastChannel
+  // 6. Firestore Announcements Listener
+  const unsubAnnouncements = onSnapshot(TRAINING_ANNOUNCEMENTS_DOC, (snap) => {
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data && Array.isArray(data.announcements)) {
+        localStorage.setItem(STORAGE_ANNOUNCEMENTS_KEY, JSON.stringify(data.announcements));
+        onAnnouncementsUpdate?.(data.announcements);
+      }
+    }
+  }, () => {});
+
+  // 7. Local CustomEvents, Cross-tab Storage Events & BroadcastChannel
   const handleLocalTrainingsEvent = (e: Event) => {
     const customEvent = e as CustomEvent<TrainingDocument[]>;
     if (customEvent.detail && Array.isArray(customEvent.detail)) {
@@ -615,11 +676,22 @@ export function subscribeToTrainingUpdates(
     }
   };
 
+  const handleLocalAnnouncementsEvent = (e: Event) => {
+    const customEvent = e as CustomEvent<TrainingAnnouncement[]>;
+    if (customEvent.detail && Array.isArray(customEvent.detail)) {
+      onAnnouncementsUpdate?.(customEvent.detail);
+    } else {
+      onAnnouncementsUpdate?.(getStoredAnnouncements());
+    }
+  };
+
   const handleStorageEvent = (e: StorageEvent) => {
     if (e.key === STORAGE_TRAININGS_KEY || e.key === STORAGE_DELETED_IDS_KEY) {
       onTrainingsUpdate(getStoredTrainings());
     } else if (e.key === STORAGE_COMPLETIONS_KEY) {
       onCompletionsUpdate(getStoredCompletions());
+    } else if (e.key === STORAGE_ANNOUNCEMENTS_KEY) {
+      onAnnouncementsUpdate?.(getStoredAnnouncements());
     }
   };
 
@@ -628,11 +700,14 @@ export function subscribeToTrainingUpdates(
       onTrainingsUpdate(e.data.trainings);
     } else if (e.data?.type === 'COMPLETIONS_UPDATED' && Array.isArray(e.data.completions)) {
       onCompletionsUpdate(e.data.completions);
+    } else if (e.data?.type === 'ANNOUNCEMENTS_UPDATED' && Array.isArray(e.data.announcements)) {
+      onAnnouncementsUpdate?.(e.data.announcements);
     }
   };
 
   window.addEventListener('trainings_updated', handleLocalTrainingsEvent);
   window.addEventListener('completions_updated', handleLocalCompletionsEvent);
+  window.addEventListener('announcements_updated', handleLocalAnnouncementsEvent);
   window.addEventListener('storage', handleStorageEvent);
   trainingChannel?.addEventListener('message', handleBroadcastMessage);
 
@@ -642,8 +717,10 @@ export function subscribeToTrainingUpdates(
     unsubCollection();
     unsubCompletions();
     unsubAdmins();
+    unsubAnnouncements();
     window.removeEventListener('trainings_updated', handleLocalTrainingsEvent);
     window.removeEventListener('completions_updated', handleLocalCompletionsEvent);
+    window.removeEventListener('announcements_updated', handleLocalAnnouncementsEvent);
     window.removeEventListener('storage', handleStorageEvent);
     trainingChannel?.removeEventListener('message', handleBroadcastMessage);
   };
@@ -652,14 +729,19 @@ export function subscribeToTrainingUpdates(
 /**
  * Initial remote fetch
  */
-export async function fetchRemoteTrainings(): Promise<{ trainings?: TrainingDocument[]; completions?: TrainingCompletion[] }> {
+export async function fetchRemoteTrainings(): Promise<{
+  trainings?: TrainingDocument[];
+  completions?: TrainingCompletion[];
+  announcements?: TrainingAnnouncement[];
+}> {
   try {
-    const [snapMeta, snapCat, snapCol, snapComp, snapAdmins] = await Promise.all([
+    const [snapMeta, snapCat, snapCol, snapComp, snapAdmins, snapAnn] = await Promise.all([
       getDoc(TRAINING_META_DOC).catch(() => null),
       getDoc(TRAINING_CATALOG_DOC).catch(() => null),
       getDocs(TRAININGS_COLLECTION).catch(() => null),
       getDoc(TRAINING_COMPLETIONS_DOC).catch(() => null),
-      getDoc(ADMIN_ACCOUNTS_DOC).catch(() => null)
+      getDoc(ADMIN_ACCOUNTS_DOC).catch(() => null),
+      getDoc(TRAINING_ANNOUNCEMENTS_DOC).catch(() => null)
     ]);
 
     const map = new Map<string, TrainingDocument>();
@@ -742,7 +824,16 @@ export async function fetchRemoteTrainings(): Promise<{ trainings?: TrainingDocu
       }
     }
 
-    return { trainings: remoteTrainings, completions: remoteCompletions };
+    let remoteAnnouncements: TrainingAnnouncement[] | undefined;
+    if (snapAnn && snapAnn.exists()) {
+      const data = snapAnn.data();
+      if (data && Array.isArray(data.announcements)) {
+        remoteAnnouncements = data.announcements;
+        localStorage.setItem(STORAGE_ANNOUNCEMENTS_KEY, JSON.stringify(remoteAnnouncements));
+      }
+    }
+
+    return { trainings: remoteTrainings, completions: remoteCompletions, announcements: remoteAnnouncements };
   } catch (err) {
     console.warn('Initial remote fetch error:', err);
     return {};

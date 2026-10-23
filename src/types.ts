@@ -127,3 +127,15 @@ export interface TrainingFilterState {
   onlyWithVideo: boolean;
   onlyWithPdf: boolean;
 }
+
+export interface TrainingAnnouncement {
+  id: string;
+  title: string;
+  content: string;
+  priority: 'acil' | 'onemli' | 'bilgi';
+  author: string;
+  createdAt: string;
+  updatedAt: string;
+  isActive: boolean;
+}
+

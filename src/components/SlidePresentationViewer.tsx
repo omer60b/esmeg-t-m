@@ -306,7 +306,7 @@ export const SlidePresentationViewer: React.FC<SlidePresentationViewerProps> = (
         {/* Slide Footer */}
         <div className="pt-4 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-500">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-400">Esme Şirketler Grubu</span>
+            <span className="font-bold text-slate-400">Esme AVM</span>
             <span>•</span>
             <span>Depo & Lojistik Eğitim Programı</span>
           </div>

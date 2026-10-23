@@ -42,8 +42,7 @@ import {
   Youtube,
   Link as LinkIcon
 } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { downloadCertificatePdf } from '../utils/certificateGenerator';
 
 interface TrainingDetailModalProps {
   training: TrainingDocument;
@@ -267,89 +266,29 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
     setShowCertificateModal(true);
   };
 
-  // Generate Formal PDF Certificate via jsPDF
+  // Generate Formal PDF Certificate with 100% Turkish character fidelity
   const handleDownloadCertificatePdf = () => {
     const certId = generatedCertificateId || `ESME-TBL-${Date.now().toString(36).toUpperCase()}`;
-    const doc = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: 'a4'
-    });
-
-    // Decorative Borders
-    doc.setDrawColor(185, 28, 28);
-    doc.setLineWidth(3);
-    doc.rect(10, 10, 277, 190);
-
-    doc.setDrawColor(217, 119, 6);
-    doc.setLineWidth(1);
-    doc.rect(13, 13, 271, 184);
-
-    // Header Corporate Title
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
-    doc.setTextColor(185, 28, 28);
-    doc.text("ESME SIRKETLER GRUBU", 148.5, 30, { align: "center" });
-
-    doc.setFontSize(12);
-    doc.setTextColor(75, 85, 99);
-    doc.text("KURUMSAL BILGI ISLEM VE DEPO YONETIMI AKADEMISI", 148.5, 38, { align: "center" });
-
-    // Certificate Ribbon
-    doc.setFontSize(18);
-    doc.setTextColor(17, 24, 39);
-    doc.text("RESMI BASARI VE TEBELLUG SERTIFIKASI", 148.5, 54, { align: "center" });
-
-    // Personnel Info Text
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.setTextColor(31, 41, 55);
-
-    const bodyText = `Isbu resmi sertifika ile asagida bilgileri yer alan sirket personelimizin; ilgili egitim ve standart operasyon prosedurunu (SOP) eksiksiz tamamladigi, rastgele 5 soruluk anlama testinden %80 basari barajini saglayarak (${correctCount}/${totalQuestions}) tebellug taahhutnamesini imzaladigi tescil edilmistir.`;
-    
-    doc.text(doc.splitTextToSize(bodyText, 240), 148.5, 68, { align: "center" });
-
-    // Information Box Table
-    autoTable(doc, {
-      startY: 85,
-      margin: { left: 35, right: 35 },
-      theme: 'grid',
-      styles: { fontSize: 9.5, cellPadding: 3.5, font: 'helvetica' },
-      headStyles: { fillColor: [185, 28, 28], textColor: [255, 255, 255], fontStyle: 'bold' },
-      head: [['Parametre', 'Resmi Tebellug & Sertifika Detayi']],
-      body: [
-        ['Sertifika Sahibi Personel', personnelInputName || currentPersonnel],
-        ['Magaza / Sube', `${currentBranchName} (Sube ID: ${currentBranchId})`],
-        ['Egitim Modulu & Yonergeler', training.title],
-        ['Kategori & Dokuman No', `${training.category === 'bilgi-islem' ? 'Bilgi Islem' : 'Depocu Egitim'} • ${training.docNo}`],
-        ['Sinav Basarisi', `${correctCount} / ${totalQuestions} Dogru (Basarili - Gecer Not)`],
-        ['Tebellug Tarihi', new Date().toLocaleString('tr-TR')],
-        ['Sertifika Seri No', certId]
-      ]
-    });
-
-    // Signature Seals
-    const finalY = (doc as any).lastAutoTable?.finalY || 150;
-    doc.setFontSize(10);
-    doc.setTextColor(100, 116, 139);
-    doc.text("Tebellug Eden Personel", 55, finalY + 18, { align: "center" });
-    doc.text("Dijital Onaylandi", 55, finalY + 24, { align: "center" });
-
-    if (training.category === 'depocu') {
-      doc.text("Hazirlayan & Yonetici", 148.5, finalY + 18, { align: "center" });
-      doc.text("Turgut CESUR (B.I. ve Kasa Muduru)", 148.5, finalY + 24, { align: "center" });
-
-      doc.text("Genel Yonetim Onayi", 240, finalY + 18, { align: "center" });
-      doc.text("Omer BAS (Genel Yonetici)", 240, finalY + 24, { align: "center" });
-    } else {
-      doc.text("Bilgi Islem ve Depo Direktoru", 148.5, finalY + 18, { align: "center" });
-      doc.text("Turgut CESUR (Elektronik Muhr)", 148.5, finalY + 24, { align: "center" });
-
-      doc.text("Esme Genel Mudurluk", 240, finalY + 18, { align: "center" });
-      doc.text("O.BAS (Kurumsal Onay)", 240, finalY + 24, { align: "center" });
-    }
-
-    doc.save(`Esme_Sertifika_${training.docNo.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
+    const completionObj: TrainingCompletion = {
+      id: `comp_${Date.now()}`,
+      trainingId: training.id,
+      trainingTitle: training.title,
+      category: training.category,
+      branchId: currentBranchId,
+      branchName: currentBranchName,
+      personnelName: (personnelInputName || currentPersonnel).trim(),
+      personnelRole: 'Şube Personeli / Sorumlusu',
+      quizScore: correctCount,
+      quizTotal: totalQuestions,
+      quizPassed: isPassed,
+      signedAgreement: true,
+      completedAt: new Date().toISOString(),
+      certificateId: certId
+    };
+    downloadCertificatePdf(
+      completionObj,
+      `Esme_AVM_Sertifika_${training.docNo.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
+    );
   };
 
   const handlePrintDocument = () => {
@@ -895,7 +834,7 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
                         </div>
                         <div>
                           <h1 className="text-xl sm:text-2xl font-black text-red-600 tracking-tight">
-                            ESME ŞİRKETLER GRUBU
+                            ESME AVM
                           </h1>
                           <p className="text-xs text-slate-600 font-semibold uppercase tracking-wider">
                             Bilgi İşlem ve Depo Yönetimi Direktörlüğü
@@ -1354,7 +1293,7 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
 
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                  Esme Şirketler Grubu Akademisi
+                  Esme AVM Akademisi
                 </span>
                 <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mt-1">
                   Resmi Başarı ve Tebellüğ Sertifikası

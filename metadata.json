@@ -1,6 +1,6 @@
 {
   "name": "esmeegitim - Esme Eğitim Portalı",
-  "description": "Esme Şirketler Grubu kurumsal online eğitim portalı: Bilgi İşlem Eğitim, Depocu Eğitim, Yönerge E-Kitaplığı ve Video Eğitim Portalı.",
+  "description": "Esme AVM kurumsal online eğitim portalı: Bilgi İşlem Eğitim, Depocu Eğitim, Yönerge E-Kitaplığı ve Video Eğitim Portalı.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

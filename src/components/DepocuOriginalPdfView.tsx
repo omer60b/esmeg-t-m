@@ -183,7 +183,7 @@ export const DepocuOriginalPdfView: React.FC<DepocuOriginalPdfViewProps> = ({
               <div className="border-b-2 border-red-600 pb-4 flex items-center justify-between">
                 <div>
                   <h1 className="text-xl sm:text-2xl font-black text-red-600 tracking-tight">
-                    ESME ŞİRKETLER GRUBU
+                    ESME AVM
                   </h1>
                   <h2 className="text-sm font-extrabold text-slate-800 uppercase tracking-wide">
                     Depocu Eğitim ve Görev Tanımı Kitapçığı

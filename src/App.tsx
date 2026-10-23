@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   TrainingDocument, 
   TrainingCategory, 
-  TrainingCompletion
+  TrainingCompletion,
+  TrainingAnnouncement
 } from './types';
 import { 
   getStoredTrainings, 
@@ -13,6 +14,8 @@ import {
   recordTrainingCompletion, 
   clearAllCompletions,
   deleteTrainingCompletion,
+  getStoredAnnouncements,
+  saveAnnouncements,
   subscribeToTrainingUpdates,
   fetchRemoteTrainings
 } from './services/trainingStorage';
@@ -21,18 +24,21 @@ import { officialEsmeBranches } from './mockData';
 
 // Training Components
 import { TrainingHeader } from './components/TrainingHeader';
+import { AnnouncementsBanner } from './components/AnnouncementsBanner';
 import { TrainingCatalogView } from './components/TrainingCatalogView';
 import { TrainingDetailModal } from './components/TrainingDetailModal';
 import { EBookReader } from './components/EBookReader';
 import { VideoHubView } from './components/VideoHubView';
 import { AdminTrainingPanel } from './components/AdminTrainingPanel';
 import { TebellugTrackingView } from './components/TebellugTrackingView';
+import { LeaderboardView } from './components/LeaderboardView';
 import { AdminAuthModal } from './components/AdminAuthModal';
 
 export default function App() {
   const [trainings, setTrainings] = useState<TrainingDocument[]>(() => getStoredTrainings());
   const [completions, setCompletions] = useState<TrainingCompletion[]>(() => getStoredCompletions());
-  const [trainingActiveTab, setTrainingActiveTab] = useState<'catalog' | 'ebook' | 'video' | 'tebellug' | 'admin'>('catalog');
+  const [announcements, setAnnouncements] = useState<TrainingAnnouncement[]>(() => getStoredAnnouncements());
+  const [trainingActiveTab, setTrainingActiveTab] = useState<'catalog' | 'ebook' | 'video' | 'tebellug' | 'leaderboard' | 'admin'>('catalog');
   const [selectedCategory, setSelectedCategory] = useState<'all' | TrainingCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -85,11 +91,15 @@ export default function App() {
       if (Array.isArray(remote.completions)) {
         setCompletions(remote.completions);
       }
+      if (Array.isArray(remote.announcements)) {
+        setAnnouncements(remote.announcements);
+      }
     });
 
     const unsubscribeTraining = subscribeToTrainingUpdates(
       (updatedTrainings) => setTrainings(updatedTrainings),
-      (updatedCompletions) => setCompletions(updatedCompletions)
+      (updatedCompletions) => setCompletions(updatedCompletions),
+      (updatedAnnouncements) => setAnnouncements(updatedAnnouncements)
     );
 
     return () => {
@@ -165,6 +175,11 @@ export default function App() {
     setCompletions(updated);
   };
 
+  const handleSaveAnnouncements = async (updated: TrainingAnnouncement[]) => {
+    await saveAnnouncements(updated);
+    setAnnouncements(updated);
+  };
+
   const bilgiIslemCount = trainings.filter(t => t.category === 'bilgi-islem').length;
   const depocuCount = trainings.filter(t => t.category === 'depocu').length;
 
@@ -193,6 +208,13 @@ export default function App() {
 
         {/* Main Content Area */}
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+          {/* Top Urgent Operational Announcements Banner (Editable by Admins) */}
+          <AnnouncementsBanner
+            announcements={announcements}
+            onSaveAnnouncements={handleSaveAnnouncements}
+            isAdmin={isAdmin}
+            onRequestAdminAuth={() => setShowAdminAuthModal(true)}
+          />
           
           {/* VIEW 1: CATALOG */}
           {trainingActiveTab === 'catalog' && (
@@ -251,7 +273,17 @@ export default function App() {
             />
           )}
 
-          {/* VIEW 5: ADMIN TRAINING MANAGEMENT */}
+          {/* VIEW 5: LEADERBOARD & CERTIFICATE ALBUM */}
+          {trainingActiveTab === 'leaderboard' && (
+            <LeaderboardView
+              trainings={trainings}
+              completions={completions}
+              currentBranchId={currentBranchId}
+              currentPersonnel={currentPersonnel}
+            />
+          )}
+
+          {/* VIEW 6: ADMIN TRAINING MANAGEMENT */}
           {trainingActiveTab === 'admin' && (
             isAdmin ? (
               <AdminTrainingPanel
@@ -298,7 +330,7 @@ export default function App() {
               </div>
               <div>
                 <p className="font-bold text-slate-200">
-                  Esme Şirketler Grubu — Bilgi İşlem & Depo Yönetimi Koordinatörlüğü
+                  Esme AVM — Bilgi İşlem & Depo Yönetimi Koordinatörlüğü
                 </p>
                 <p className="text-[11px] text-slate-500">
                   esmeegitim — Resmi İç Yönergeler, Eğitim Standartları ve Dijital Tebellüğ Portalı • © {new Date().getFullYear()}
