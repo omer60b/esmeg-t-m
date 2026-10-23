@@ -79,7 +79,7 @@ export default function App() {
     purgeLegacyStockData();
 
     fetchRemoteTrainings().then(remote => {
-      if (remote.trainings && remote.trainings.length > 0) {
+      if (Array.isArray(remote.trainings)) {
         setTrainings(remote.trainings);
       }
       if (Array.isArray(remote.completions)) {
