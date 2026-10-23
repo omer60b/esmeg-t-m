@@ -19,7 +19,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
   onClose,
   onSuccess
 }) => {
-  const [username, setUsername] = useState('O.BAS');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -152,7 +152,8 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Örn: O.BAS"
+              placeholder="Yönetici kullanıcı adınızı giriniz"
+              autoComplete="off"
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-xs text-slate-900 dark:text-white font-semibold focus:ring-2 focus:ring-red-500"
             />
           </div>
