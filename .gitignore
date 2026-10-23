@@ -9,3 +9,4 @@ coverage/
 .agents/
 .aistudio/
 .firebase/
+bun.lock
