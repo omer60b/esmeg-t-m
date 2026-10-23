@@ -144,7 +144,7 @@ export interface SupportMessage {
   branchId: number;
   branchName: string;
   personnelName: string;
-  targetManager: 'Ömer BAŞ (Bilgi İşlem)' | 'Turgut CESUR (Depo Yönetimi)' | 'Genel Yönetim';
+  targetManager: string;
   userMessage: string;
   aiAutoReply?: string;
   adminReply?: string;
@@ -153,5 +153,6 @@ export interface SupportMessage {
   status: 'pending' | 'replied';
   createdAt: string;
 }
+
 
 

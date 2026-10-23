@@ -13,11 +13,8 @@ import {
 import {
   Send,
   X,
-  Sparkles,
   UserCheck,
   MessageSquare,
-  CheckCircle2,
-  Clock,
   Trash2,
   Reply,
   ShieldCheck,
@@ -37,9 +34,10 @@ interface FloatingAIRobotBotProps {
 }
 
 type TargetManagerType =
-  | 'Ömer BAŞ (Bilgi İşlem)'
-  | 'Turgut CESUR (Depo Yönetimi)'
-  | 'Genel Yönetim';
+  | 'Ömer BAŞ - Genel Yönetim'
+  | 'Turgut CESUR - Bilgi İşlem Müdürlüğü'
+  | 'Tuğba EKREM - Bilgi İşlem ve Kasa Sorumlusu'
+  | 'Esme AVM Genel Yönetim Kordinatörlüğü';
 
 export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
   trainings,
@@ -50,11 +48,11 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeBotTab, setActiveBotTab] = useState<'user_chat' | 'admin_inbox'>('user_chat');
-  const [targetManager, setTargetManager] = useState<TargetManagerType>('Ömer BAŞ (Bilgi İşlem)');
+  const [targetManager, setTargetManager] = useState<TargetManagerType>('Ömer BAŞ - Genel Yönetim');
   const [inputText, setInputText] = useState('');
   const [messages, setMessages] = useState<SupportMessage[]>(() => getStoredSupportMessages());
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
-  const [adminResponderName, setAdminResponderName] = useState<string>('Ömer BAŞ');
+  const [adminResponderName, setAdminResponderName] = useState<string>('Ömer BAŞ - Genel Yönetim');
   const [showWelcomeBubble, setShowWelcomeBubble] = useState(true);
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
@@ -70,7 +68,7 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
     return () => unsub();
   }, []);
 
-  // Automatically switch to Admin Inbox tab when admin logs in and there are pending messages
+  // Automatically switch to Admin Inbox tab when admin logs in
   useEffect(() => {
     if (isAdmin) {
       setActiveBotTab('admin_inbox');
@@ -95,7 +93,6 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
   ): string => {
     const q = userQuery.toLowerCase();
 
-    // Check matching training document
     const matchedTraining = trainings.find(
       t =>
         t.title.toLowerCase().includes(q) ||
@@ -108,27 +105,27 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
     );
 
     if (q.includes('kasa') || q.includes('eft') || q.includes('iban') || q.includes('dekont') || q.includes('pos')) {
-      return `🤖 **Esme AI Robot Bilgilendirmesi:** Mesajınız doğrudan **${selectedManager}** birimine iletildi. Kasa kapanışı, POS Günther sonu ve EFT/Havale işlemlerinde dekont doğrulaması yapılmadan ürün teslimatı kesinlikle yapılmamalıdır. İlgili yönerge: *Bilgi İşlem ve Kasa Yönetimi Genel Eğitim Talimatı (ESME-Bİ-001)*. Yöneticimiz en kısa sürede bu pencereden size yanıt verecektir.`;
+      return `🤖 Esme AVM: Mesajınız doğrudan "${selectedManager}" birimine iletildi. Kasa kapanışı, POS gün sonu ve EFT/Havale işlemlerinde dekont doğrulaması yapılmadan ürün teslimatı kesinlikle yapılmamalıdır. İlgili yönerge: Bilgi İşlem ve Kasa Yönetimi Genel Eğitim Talimatı (ESME-Bİ-001). Yöneticimiz en kısa sürede bu pencereden size yanıt verecektir.`;
     }
 
     if (q.includes('şase') || q.includes('sase') || q.includes('barkod') || q.includes('depo') || q.includes('sevkiyat') || q.includes('sayım')) {
-      return `🤖 **Esme AI Robot Bilgilendirmesi:** Talebiniz **${selectedManager}** koordinatörlüğüne canlı olarak iletildi. Depo kabul, şase numarası eşleştirme ve barkod etiketleme işlemlerinde fiziki ürün ile sistem kaydının birebir uyuşması zorunludur. Yöneticimiz mesajınızı inceleyip buradan yanıtlayacaktır.`;
+      return `🤖 Esme AVM: Talebiniz "${selectedManager}" birimine canlı olarak iletildi. Depo kabul, şase numarası eşleştirme ve barkod etiketleme işlemlerinde fiziki ürün ile sistem kaydının birebir uyuşması zorunludur. Yöneticimiz mesajınızı inceleyip buradan yanıtlayacaktır.`;
     }
 
     if (q.includes('sınav') || q.includes('sertifika') || q.includes('tebellüğ') || q.includes('imza')) {
-      return `🤖 **Esme AI Robot Bilgilendirmesi:** Mesajınız **${selectedManager}** ekranına düştü. Eğitim modülünün içindeki **"Sınav & Tebellüğ"** sekmesinden 5 soruluk testi tamamlayıp dijital onay kutucuğunu işaretleyerek sertifikanızı anında oluşturabilirsiniz.`;
+      return `🤖 Esme AVM: Mesajınız "${selectedManager}" ekranına düştü. Eğitim modülünün içindeki "Sınav & Tebellüğ" sekmesinden 5 soruluk testi tamamlayıp dijital onay kutucuğunu işaretleyerek sertifikanızı anında oluşturabilirsiniz.`;
     }
 
     if (matchedTraining) {
-      return `🤖 **Esme AI Robot Bilgilendirmesi:** Mesajınız **${selectedManager}** yöneticimize başarıyla iletildi. Sorunuzla ilgili **"${matchedTraining.title}" (${matchedTraining.docNo})** modülünü inceleyebilirsiniz. Yöneticimiz yanıt yazdığında burada anlık olarak görüntülenecektir.`;
+      return `🤖 Esme AVM: Mesajınız "${selectedManager}" yöneticimize başarıyla iletildi. Sorunuzla ilgili "${matchedTraining.title}" (${matchedTraining.docNo}) modülünü inceleyebilirsiniz. Yöneticimiz yanıt yazdığında burada anlık olarak görüntülenecektir.`;
     }
 
     const activeAnn = announcements.find(a => a.isActive);
     if (q.includes('duyuru') && activeAnn) {
-      return `🤖 **Esme AI Robot Bilgilendirmesi:** Mesajınız **${selectedManager}** yöneticimize iletildi. Güncel aktif duyuru: *"${activeAnn.title} — ${activeAnn.content}"*.`;
+      return `🤖 Esme AVM: Mesajınız "${selectedManager}" yöneticimize iletildi. Güncel aktif duyuru: "${activeAnn.title} — ${activeAnn.content}".`;
     }
 
-    return `🤖 **Esme AI Robot Bilgilendirmesi:** Merhaba **${currentPersonnel}** (${currentBranch.name}), mesajınız **${selectedManager}** ekranına anlık olarak iletildi. Yöneticimiz yanıt verdiğinde bu sohbet ekranında bildirim alacaksınız.`;
+    return `🤖 Esme AVM: Merhaba ${currentPersonnel} (${currentBranch.name}), mesajınız "${selectedManager}" ekranına anlık olarak iletildi. Yöneticimiz yanıt verdiğinde bu sohbet ekranında bildirim alacaksınız.`;
   };
 
   const handleSendUserMessage = async (customText?: string) => {
@@ -200,7 +197,7 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
   );
 
   const quickPrompts = [
-    'Yöneticiye acil operasyonel durum bildirmek istiyorum',
+    'Yönetime acil operasyonel durum bildirmek istiyorum',
     'Kasa kapanış / EFT dekont onayı hakkında destek',
     'Depo şase no ve barkod eşleştirme sorusu',
     'Tebellüğ sınavı ve sertifika onayı hakkında'
@@ -210,7 +207,7 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end">
       {/* OPEN CHAT WINDOW */}
       {isOpen && (
-        <div className="mb-3 w-[340px] sm:w-[385px] max-h-[530px] bg-white dark:bg-slate-900 border-2 border-red-600/80 dark:border-red-500/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-200">
+        <div className="mb-3 w-[340px] sm:w-[390px] max-h-[540px] bg-white dark:bg-slate-900 border-2 border-red-600/80 dark:border-red-500/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-200">
           {/* Chat Header */}
           <div className="p-3.5 bg-gradient-to-r from-slate-900 via-red-950 to-slate-900 text-white flex items-center justify-between gap-2 border-b border-red-500/30">
             <div className="flex items-center gap-2.5">
@@ -227,13 +224,13 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
-                  <h4 className="text-xs font-black tracking-wide text-white uppercase">
-                    ESME AI ROBOT & YÖNETİCİ HATTI
+                  <h4 className="text-xs font-black tracking-wide text-white">
+                    Esme AVM
                   </h4>
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                 </div>
                 <p className="text-[10px] text-slate-300">
-                  Yöneticilere Doğrudan Ulaşın • Canlı Destek
+                  Yönetime Ulaş • Canlı İletişim Hattı
                 </p>
               </div>
             </div>
@@ -283,7 +280,7 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
             <>
               {/* Target Manager Selector */}
               <div className="px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800">
-                <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300 block mb-1">
+                <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 block mb-1">
                   Ulaşmak İstediğiniz Yönetici / Birim:
                 </label>
                 <select
@@ -291,33 +288,38 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
                   onChange={e => setTargetManager(e.target.value as TargetManagerType)}
                   className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500"
                 >
-                  <option value="Ömer BAŞ (Bilgi İşlem)">
-                    👨‍💼 Ömer BAŞ — Bilgi İşlem & Kasa Yönetimi
+                  <option value="Ömer BAŞ - Genel Yönetim">
+                    Ömer BAŞ - Genel Yönetim
                   </option>
-                  <option value="Turgut CESUR (Depo Yönetimi)">
-                    👨‍💼 Turgut CESUR — Depo & Sevkiyat Yönetimi
+                  <option value="Turgut CESUR - Bilgi İşlem Müdürlüğü">
+                    Turgut CESUR - Bilgi İşlem Müdürlüğü
                   </option>
-                  <option value="Genel Yönetim">
-                    🏢 Esme AVM Genel Yönetim Koordinatörlüğü
+                  <option value="Tuğba EKREM - Bilgi İşlem ve Kasa Sorumlusu">
+                    Tuğba EKREM - Bilgi İşlem ve Kasa Sorumlusu
+                  </option>
+                  <option value="Esme AVM Genel Yönetim Kordinatörlüğü">
+                    Esme AVM Genel Yönetim Kordinatörlüğü
                   </option>
                 </select>
               </div>
 
               {/* Conversation Body */}
               <div className="flex-1 overflow-y-auto p-3.5 space-y-3 max-h-[280px] bg-slate-50/50 dark:bg-slate-950/60">
-                {/* Initial Greeting from AI Robot */}
+                {/* Initial Greeting from Esme AVM Robot */}
                 <div className="flex items-start gap-2.5">
                   <div className="w-7 h-7 rounded-lg bg-red-600 text-white flex items-center justify-center shrink-0 text-xs font-bold shadow">
                     🤖
                   </div>
                   <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl rounded-tl-xs p-3 text-xs text-slate-800 dark:text-slate-100 shadow-xs">
                     <p className="font-extrabold text-red-600 dark:text-red-400 mb-1">
-                      Merhaba {currentPersonnel}! ({currentBranch.name})
+                      Esme AVM — Merhaba {currentPersonnel}! ({currentBranch.name})
                     </p>
                     <p className="leading-relaxed">
-                      Ben <strong>Esme AVM Yapay Zeka Robotuyum</strong>. Buradan yöneticilerimiz{' '}
-                      <strong>Ömer BAŞ</strong> ve <strong>Turgut CESUR</strong>'a doğrudan mesaj
-                      gönderebilir veya eğitim/yönergeler hakkında anında yanıt alabilirsiniz.
+                      Ben <strong>Esme AVM</strong> asistan robotuyum. Yukarıdan ulaşmak istediğiniz yönetici veya birimi seçerek doğrudan mesaj gönderebilirsiniz:
+                      <br />• <strong>Ömer BAŞ</strong> - Genel Yönetim
+                      <br />• <strong>Turgut CESUR</strong> - Bilgi İşlem Müdürlüğü
+                      <br />• <strong>Tuğba EKREM</strong> - Bilgi İşlem ve Kasa Sorumlusu
+                      <br />• <strong>Esme AVM Genel Yönetim Kordinatörlüğü</strong>
                     </p>
                   </div>
                 </div>
@@ -363,7 +365,7 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
                       </span>
                     </div>
 
-                    {/* AI Robot Instant Response */}
+                    {/* Esme AVM Robot Instant Response */}
                     {msg.aiAutoReply && (
                       <div className="flex items-start gap-2">
                         <div className="w-6 h-6 rounded-lg bg-slate-800 text-cyan-400 flex items-center justify-center shrink-0 text-[11px]">
@@ -407,14 +409,14 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
                   type="text"
                   value={inputText}
                   onChange={e => setInputText(e.target.value)}
-                  placeholder="Yöneticiye mesajınızı veya sorunuzu yazın..."
+                  placeholder="Yönetime mesajınızı veya sorunuzu yazın..."
                   className="flex-1 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500"
                 />
                 <button
                   type="submit"
                   disabled={!inputText.trim()}
                   className="p-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white shadow transition cursor-pointer shrink-0"
-                  title="Yöneticiye Gönder"
+                  title="Yönetime Gönder"
                 >
                   <Send className="w-4 h-4" />
                 </button>
@@ -434,9 +436,10 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
                   onChange={e => setAdminResponderName(e.target.value)}
                   className="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white"
                 >
-                  <option value="Ömer BAŞ">Ömer BAŞ</option>
-                  <option value="Turgut CESUR">Turgut CESUR</option>
-                  <option value="Esme AVM Yönetimi">Esme AVM Yönetimi</option>
+                  <option value="Ömer BAŞ - Genel Yönetim">Ömer BAŞ - Genel Yönetim</option>
+                  <option value="Turgut CESUR - Bilgi İşlem Müdürlüğü">Turgut CESUR - Bilgi İşlem Müdürlüğü</option>
+                  <option value="Tuğba EKREM - Bilgi İşlem ve Kasa Sorumlusu">Tuğba EKREM - Bilgi İşlem ve Kasa Sorumlusu</option>
+                  <option value="Esme AVM Genel Yönetim Kordinatörlüğü">Esme AVM Genel Yönetim Kordinatörlüğü</option>
                 </select>
               </div>
 
@@ -511,9 +514,9 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
         </div>
       )}
 
-      {/* COMPACT MOVING AI ROBOT BUTTON IN BOTTOM-RIGHT */}
+      {/* COMPACT MOVING ESME AVM ROBOT BUTTON IN BOTTOM-RIGHT */}
       <div className="flex items-center gap-2">
-        {/* Compact Callout Pill */}
+        {/* Compact Callout Pill: Only "Yönetime Ulaş" */}
         {!isOpen && showWelcomeBubble && (
           <div className="flex items-center gap-1.5 bg-slate-900 text-white border border-red-500/50 rounded-full pl-3 pr-2 py-1.5 shadow-xl text-[11px] font-extrabold animate-in fade-in slide-in-from-right-3 duration-300">
             <button
@@ -522,7 +525,7 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
               className="flex items-center gap-1.5 cursor-pointer"
             >
               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-              <span>Yöneticiye Ulaş • AI Robot</span>
+              <span>Yönetime Ulaş</span>
             </button>
             <button
               type="button"
@@ -531,19 +534,19 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
                 setShowWelcomeBubble(false);
               }}
               className="text-slate-400 hover:text-white p-0.5 cursor-pointer"
-              title="Etiketi Gizle"
+              title="Gizle"
             >
               <X className="w-3 h-3" />
             </button>
           </div>
         )}
 
-        {/* Small Moving 3D-Styled AI Robot Button */}
+        {/* Small Moving 3D-Styled Esme AVM Robot Button */}
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
           className="relative group w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-red-950 border-2 border-red-500/80 hover:border-cyan-400 shadow-xl shadow-red-950/50 flex items-center justify-center cursor-pointer transition-all animate-robot-patrol"
-          title="Yöneticiye Ulaş & Yapay Zeka Destek Robotu"
+          title="Esme AVM — Yönetime Ulaş"
         >
           {/* Notification Badge */}
           {(isAdmin ? pendingTotalCount > 0 : repliedForBranchCount > 0) && (
@@ -552,7 +555,7 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
             </span>
           )}
 
-          {/* Animated Small AI Robot SVG */}
+          {/* Animated Small Esme AVM Robot SVG */}
           <svg
             viewBox="0 0 64 64"
             className="w-11 h-11 drop-shadow-[0_2px_6px_rgba(34,211,238,0.35)]"
@@ -606,15 +609,15 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
               d="M 26 28 Q 32 31.5 38 28"
               stroke="#38bdf8"
               strokeWidth="2"
-               strokeLinecap="round"
+              strokeLinecap="round"
               fill="none"
             />
 
             {/* Robot Torso / Body */}
             <rect
-              x="18"
+              x="16"
               y="38"
-              width="28"
+              width="32"
               height="18"
               rx="6"
               fill="#f1f5f9"
@@ -622,18 +625,18 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
               strokeWidth="2"
             />
 
-            {/* Esme "E" Core Badge on Chest */}
-            <rect x="25" y="42" width="14" height="10" rx="3" fill="#dc2626" />
+            {/* Esme AVM Chest Badge */}
+            <rect x="19" y="42" width="26" height="10" rx="3" fill="#dc2626" />
             <text
               x="32"
-              y="49.5"
+              y="49"
               textAnchor="middle"
               fill="#ffffff"
-              fontSize="8"
+              fontSize="6.5"
               fontWeight="900"
               fontFamily="sans-serif"
             >
-              AI
+              ESME
             </text>
 
             {/* Hover Jet Glow under Robot */}
