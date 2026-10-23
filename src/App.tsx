@@ -61,13 +61,7 @@ export default function App() {
     }
   });
 
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('esme_is_admin_mode') === 'true';
-    } catch {
-      return false;
-    }
-  });
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
   const [showAdminAuthModal, setShowAdminAuthModal] = useState(false);
   const [selectedTrainingId, setSelectedTrainingId] = useState<string | null>(null);
@@ -82,6 +76,9 @@ export default function App() {
 
   // Real-time Firestore sync for training database and purge any legacy stock data
   useEffect(() => {
+    try {
+      localStorage.removeItem('esme_is_admin_mode');
+    } catch {}
     purgeLegacyStockData();
 
     fetchRemoteTrainings().then(remote => {
@@ -112,9 +109,8 @@ export default function App() {
     try {
       localStorage.setItem('esme_active_branch_id', String(currentBranchId));
       localStorage.setItem('esme_active_personnel_name', currentPersonnel);
-      localStorage.setItem('esme_is_admin_mode', String(isAdmin));
     } catch {}
-  }, [currentBranchId, currentPersonnel, isAdmin]);
+  }, [currentBranchId, currentPersonnel]);
 
   const currentBranch = officialEsmeBranches.find(b => b.id === currentBranchId) || officialEsmeBranches[0];
 

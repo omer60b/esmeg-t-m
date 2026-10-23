@@ -24,8 +24,7 @@ interface AnnouncementsBannerProps {
 export const AnnouncementsBanner: React.FC<AnnouncementsBannerProps> = ({
   announcements,
   onSaveAnnouncements,
-  isAdmin,
-  onRequestAdminAuth
+  isAdmin
 }) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const [showManageModal, setShowManageModal] = useState(false);
@@ -42,11 +41,13 @@ export const AnnouncementsBanner: React.FC<AnnouncementsBannerProps> = ({
   const safeIndex = activeAnnouncements.length > 0 ? activeIndex % activeAnnouncements.length : 0;
   const currentAnn = activeAnnouncements[safeIndex];
 
+  // Normal users should not see the banner at all if there are no active announcements
+  if (!isAdmin && activeAnnouncements.length === 0) {
+    return null;
+  }
+
   const handleOpenEditor = (item?: TrainingAnnouncement) => {
-    if (!isAdmin) {
-      onRequestAdminAuth();
-      return;
-    }
+    if (!isAdmin) return;
     if (item) {
       setEditingItem(item);
       setTitleInput(item.title);
@@ -65,7 +66,7 @@ export const AnnouncementsBanner: React.FC<AnnouncementsBannerProps> = ({
 
   const handleSaveForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!titleInput.trim() || !contentInput.trim()) return;
+    if (!isAdmin || !titleInput.trim() || !contentInput.trim()) return;
 
     const now = new Date().toISOString();
     let updatedList: TrainingAnnouncement[];
@@ -108,6 +109,7 @@ export const AnnouncementsBanner: React.FC<AnnouncementsBannerProps> = ({
   };
 
   const handleDeleteAnnouncement = async (id: string) => {
+    if (!isAdmin) return;
     const updatedList = announcements.filter(a => a.id !== id);
     await onSaveAnnouncements(updatedList);
     if (editingItem?.id === id) {
@@ -199,72 +201,64 @@ export const AnnouncementsBanner: React.FC<AnnouncementsBannerProps> = ({
             </div>
           </div>
 
-          {/* Right: Carousel Controls & Admin Edit Button */}
-          <div className="flex flex-wrap items-center justify-between lg:justify-end gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-white/10">
-            {activeAnnouncements.length > 1 && (
-              <div className="flex items-center gap-1 bg-black/30 px-2 py-1 rounded-xl border border-white/10">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setActiveIndex(prev => (prev - 1 + activeAnnouncements.length) % activeAnnouncements.length)
-                  }
-                  className="p-1 hover:bg-white/10 rounded-lg text-slate-200 transition cursor-pointer"
-                  title="Önceki Duyuru"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span className="text-[11px] font-mono font-bold px-1.5 text-amber-300">
-                  {safeIndex + 1} / {activeAnnouncements.length}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setActiveIndex(prev => (prev + 1) % activeAnnouncements.length)}
-                  className="p-1 hover:bg-white/10 rounded-lg text-slate-200 transition cursor-pointer"
-                  title="Sonraki Duyuru"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-
-            {isAdmin ? (
-              <div className="flex items-center gap-2">
-                {currentAnn && (
+          {/* Right: Carousel Controls (for multiple announcements) & Admin-Only Action Buttons */}
+          {(activeAnnouncements.length > 1 || isAdmin) && (
+            <div className="flex flex-wrap items-center justify-between lg:justify-end gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-white/10">
+              {activeAnnouncements.length > 1 && (
+                <div className="flex items-center gap-1 bg-black/30 px-2 py-1 rounded-xl border border-white/10">
                   <button
                     type="button"
-                    onClick={() => handleOpenEditor(currentAnn)}
-                    className="px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold flex items-center gap-1.5 border border-white/20 transition cursor-pointer"
+                    onClick={() =>
+                      setActiveIndex(prev => (prev - 1 + activeAnnouncements.length) % activeAnnouncements.length)
+                    }
+                    className="p-1 hover:bg-white/10 rounded-lg text-slate-200 transition cursor-pointer"
+                    title="Önceki Duyuru"
                   >
-                    <Edit3 className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Duyuruyu Düzenle</span>
+                    <ChevronLeft className="w-4 h-4" />
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => handleOpenEditor()}
-                  className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 shadow-md transition cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Yeni Duyuru Yayınla</span>
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => handleOpenEditor(currentAnn)}
-                className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 text-[11px] font-semibold flex items-center gap-1.5 border border-white/15 transition cursor-pointer"
-                title="Acil operasyonel duyuruları düzenlemek için yönetici girişi yapın"
-              >
-                <Edit3 className="w-3.5 h-3.5 text-amber-300" />
-                <span>Duyuru Yönetimi</span>
-              </button>
-            )}
-          </div>
+                  <span className="text-[11px] font-mono font-bold px-1.5 text-amber-300">
+                    {safeIndex + 1} / {activeAnnouncements.length}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveIndex(prev => (prev + 1) % activeAnnouncements.length)}
+                    className="p-1 hover:bg-white/10 rounded-lg text-slate-200 transition cursor-pointer"
+                    title="Sonraki Duyuru"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {isAdmin && (
+                <div className="flex items-center gap-2">
+                  {currentAnn && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditor(currentAnn)}
+                      className="px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold flex items-center gap-1.5 border border-white/20 transition cursor-pointer"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-amber-300" />
+                      <span>Duyuruyu Düzenle</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditor()}
+                    className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 shadow-md transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Yeni Duyuru Yayınla</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ADMIN ANNOUNCEMENT EDITOR MODAL */}
-      {showManageModal && (
+      {/* ADMIN ANNOUNCEMENT EDITOR MODAL (STRICTLY ADMIN ONLY) */}
+      {isAdmin && showManageModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="p-5 bg-gradient-to-r from-red-700 via-rose-700 to-slate-900 text-white flex items-center justify-between">
