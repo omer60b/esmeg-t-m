@@ -15,7 +15,11 @@ import {
   Sparkles,
   X,
   Star,
-  TrendingUp
+  TrendingUp,
+  Edit3,
+  Trash2,
+  Save,
+  ShieldCheck
 } from 'lucide-react';
 
 interface LeaderboardViewProps {
@@ -23,12 +27,18 @@ interface LeaderboardViewProps {
   completions: TrainingCompletion[];
   currentBranchId: number;
   currentPersonnel: string;
+  isAdmin?: boolean;
+  onUpdateCompletion?: (completion: TrainingCompletion) => Promise<void> | void;
+  onDeleteCompletion?: (completionId: string) => Promise<void> | void;
 }
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   trainings,
   completions,
-  currentBranchId
+  currentBranchId,
+  isAdmin = false,
+  onUpdateCompletion,
+  onDeleteCompletion
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<'all' | TrainingCategory>('all');
   const [activeSubTab, setActiveSubTab] = useState<'branches' | 'personnel' | 'album'>('branches');
@@ -37,6 +47,10 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
     completion: TrainingCompletion;
     imageUrl: string;
   } | null>(null);
+
+  // Admin Edit & Delete Certificate States
+  const [editingCert, setEditingCert] = useState<TrainingCompletion | null>(null);
+  const [confirmDeleteCertId, setConfirmDeleteCertId] = useState<string | null>(null);
 
   const filteredTrainings = useMemo(
     () => trainings.filter(t => selectedCategory === 'all' || t.category === selectedCategory),
@@ -74,7 +88,6 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
         avgScorePct = Math.round(sumPct / branchComps.length);
       }
 
-      // Composite score for sorting: completionRate * 10 + totalCertificates * 5 + avgScorePct * 0.5
       const compositePoints = Math.round(completionRate * 10 + totalCertificates * 15 + avgScorePct);
 
       return {
@@ -85,7 +98,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
         completionRate,
         avgScorePct,
         compositePoints,
-        latestCompletion: branchComps[0]?.completedAt || null
+        latestCompletion: branchComps[0]?.completedAt || null,
+        branchComps
       };
     });
 
@@ -157,6 +171,48 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   const handleOpenPreview = (comp: TrainingCompletion) => {
     const imageUrl = generateCertificateImageUrl(comp);
     setPreviewCertificate({ completion: comp, imageUrl });
+  };
+
+  const handleSaveEditedCertificate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCert) return;
+
+    const matchedBranch = officialEsmeBranches.find(b => b.id === Number(editingCert.branchId));
+    const normalized: TrainingCompletion = {
+      ...editingCert,
+      branchId: Number(editingCert.branchId),
+      branchName: matchedBranch ? matchedBranch.name : editingCert.branchName,
+      personnelName: editingCert.personnelName.trim() || 'Şube Personeli',
+      trainingTitle: editingCert.trainingTitle.trim() || 'Esme AVM Eğitim Modülü',
+      quizScore: Math.max(0, Number(editingCert.quizScore ?? 5)),
+      quizTotal: Math.max(1, Number(editingCert.quizTotal ?? 5))
+    };
+
+    if (onUpdateCompletion) {
+      await onUpdateCompletion(normalized);
+    }
+
+    if (previewCertificate && previewCertificate.completion.id === normalized.id) {
+      setPreviewCertificate({
+        completion: normalized,
+        imageUrl: generateCertificateImageUrl(normalized)
+      });
+    }
+
+    setEditingCert(null);
+  };
+
+  const handleExecuteDeleteCertificate = async (certId: string) => {
+    if (onDeleteCompletion) {
+      await onDeleteCompletion(certId);
+    }
+    if (previewCertificate && previewCertificate.completion.id === certId) {
+      setPreviewCertificate(null);
+    }
+    if (editingCert && editingCert.id === certId) {
+      setEditingCert(null);
+    }
+    setConfirmDeleteCertId(null);
   };
 
   const filteredBranchRankings = branchRankings.filter(item => {
@@ -353,6 +409,13 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
             <Award className="w-4 h-4" />
             <span>Resmi Sertifika Albümü ({filteredCompletions.length})</span>
           </button>
+
+          {isAdmin && (
+            <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-300 border border-amber-400/60 text-[11px] font-extrabold">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Yönetici Düzenleme & Silme Aktif</span>
+            </span>
+          )}
         </div>
 
         {/* Category & Search */}
@@ -420,7 +483,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                   <th className="p-3.5">Sertifika Sayısı</th>
                   <th className="p-3.5">Sınav Başarısı</th>
                   <th className="p-3.5">Başarı Puanı</th>
-                  <th className="p-3.5 text-right">Durum Rozeti</th>
+                  <th className="p-3.5 text-right">{isAdmin ? 'Durum & Yönetici İşlemi' : 'Durum Rozeti'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -509,23 +572,40 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                       </td>
 
                       <td className="p-3.5 text-right">
-                        {item.completionRate === 100 ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] font-extrabold">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Tam Uyumlu
-                          </span>
-                        ) : item.completionRate >= 50 ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 text-[10px] font-extrabold">
-                            <TrendingUp className="w-3.5 h-3.5" /> Başarılı
-                          </span>
-                        ) : item.totalCertificates > 0 ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 text-[10px] font-extrabold">
-                            <Star className="w-3.5 h-3.5" /> Devam Ediyor
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 text-[10px] font-semibold">
-                            Başlangıç
-                          </span>
-                        )}
+                        <div className="flex items-center justify-end gap-2">
+                          {item.completionRate === 100 ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] font-extrabold">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Tam Uyumlu
+                            </span>
+                          ) : item.completionRate >= 50 ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 text-[10px] font-extrabold">
+                              <TrendingUp className="w-3.5 h-3.5" /> Başarılı
+                            </span>
+                          ) : item.totalCertificates > 0 ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 text-[10px] font-extrabold">
+                              <Star className="w-3.5 h-3.5" /> Devam Ediyor
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 text-[10px] font-semibold">
+                              Başlangıç
+                            </span>
+                          )}
+
+                          {isAdmin && item.totalCertificates > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSearchQuery(item.branch.name);
+                                setActiveSubTab('album');
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-[10px] inline-flex items-center gap-1 cursor-pointer shadow-xs"
+                              title="Bu şubenin sertifikalarını düzenle veya sil"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                              <span>Düzenle / Sil</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -560,7 +640,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                     <th className="p-3.5">Kazanılan Sertifika</th>
                     <th className="p-3.5">Ortalama Sınav Başarısı</th>
                     <th className="p-3.5">Toplam Puan</th>
-                    <th className="p-3.5 text-right">Son Sertifika</th>
+                    <th className="p-3.5 text-right">{isAdmin ? 'Sertifika & Yönetici İşlemleri' : 'Son Sertifika'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -615,7 +695,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
 
                         <td className="p-3.5 text-right">
                           {latestCert && (
-                            <div className="flex items-center justify-end gap-1.5">
+                            <div className="flex flex-wrap items-center justify-end gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => handleOpenPreview(latestCert)}
@@ -630,6 +710,47 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                               >
                                 <Download className="w-3.5 h-3.5" /> PDF İndir
                               </button>
+
+                              {isAdmin && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingCert({ ...latestCert })}
+                                    className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-[11px] inline-flex items-center gap-1 cursor-pointer"
+                                    title="Sertifikayı Düzenle"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" /> Düzenle
+                                  </button>
+
+                                  {confirmDeleteCertId === latestCert.id ? (
+                                    <div className="inline-flex items-center gap-1 bg-rose-100 dark:bg-rose-950 px-2 py-1 rounded-lg border border-rose-400">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleExecuteDeleteCertificate(latestCert.id)}
+                                        className="px-2 py-0.5 rounded bg-rose-600 text-white font-extrabold text-[10px] cursor-pointer"
+                                      >
+                                        Onayla Sil
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmDeleteCertId(null)}
+                                        className="px-1.5 py-0.5 text-slate-600 dark:text-slate-300 text-[10px] font-bold cursor-pointer"
+                                      >
+                                        İptal
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeleteCertId(latestCert.id)}
+                                      className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
+                                      title="Sertifikayı Sil"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" /> Sil
+                                    </button>
+                                  )}
+                                </>
+                              )}
                             </div>
                           )}
                         </td>
@@ -706,23 +827,67 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 pt-2 border-t border-amber-200/60 dark:border-slate-800">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenPreview(cert)}
-                        className="flex-1 py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
-                      >
-                        <Eye className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Albümde Gör</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => downloadCertificatePdf(cert)}
-                        className="flex-1 py-2 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow transition cursor-pointer"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>PDF İndir</span>
-                      </button>
+                    <div className="space-y-2 pt-2 border-t border-amber-200/60 dark:border-slate-800">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPreview(cert)}
+                          className="flex-1 py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Albümde Gör</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => downloadCertificatePdf(cert)}
+                          className="flex-1 py-2 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow transition cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>PDF İndir</span>
+                        </button>
+                      </div>
+
+                      {/* Admin Edit & Delete Certificate Controls */}
+                      {isAdmin && (
+                        <div className="flex items-center gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setEditingCert({ ...cert })}
+                            className="flex-1 py-1.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>Sertifikayı Düzenle</span>
+                          </button>
+
+                          {confirmDeleteCertId === cert.id ? (
+                            <div className="flex-1 flex items-center justify-center gap-1 bg-rose-100 dark:bg-rose-950/90 py-1 px-2 rounded-xl border border-rose-400">
+                              <button
+                                type="button"
+                                onClick={() => handleExecuteDeleteCertificate(cert.id)}
+                                className="px-2 py-1 rounded-lg bg-rose-600 text-white text-[11px] font-extrabold cursor-pointer"
+                              >
+                                Kalıcı Sil
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteCertId(null)}
+                                className="px-2 py-1 rounded-lg text-slate-700 dark:text-slate-300 text-[11px] font-bold cursor-pointer"
+                              >
+                                İptal
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteCertId(cert.id)}
+                              className="flex-1 py-1.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Sertifikayı Sil</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -732,11 +897,192 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
         </div>
       )}
 
+      {/* ADMIN CERTIFICATE EDIT MODAL */}
+      {isAdmin && editingCert && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border-2 border-amber-500 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-amber-400" />
+                <h3 className="font-extrabold text-sm">
+                  Sertifika & Tebellüğ Kaydını Düzenle (Yönetici)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingCert(null)}
+                className="p-1 rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditedCertificate} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Personel Adı Soyadı:
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editingCert.personnelName}
+                  onChange={e =>
+                    setEditingCert({ ...editingCert, personnelName: e.target.value })
+                  }
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-bold"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Esme AVM Şubesi:
+                  </label>
+                  <select
+                    value={editingCert.branchId}
+                    onChange={e => {
+                      const bId = Number(e.target.value);
+                      const branch = officialEsmeBranches.find(b => b.id === bId);
+                      setEditingCert({
+                        ...editingCert,
+                        branchId: bId,
+                        branchName: branch ? branch.name : editingCert.branchName
+                      });
+                    }}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-bold"
+                  >
+                    {officialEsmeBranches.map(b => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Eğitim Kategorisi:
+                  </label>
+                  <select
+                    value={editingCert.category}
+                    onChange={e =>
+                      setEditingCert({
+                        ...editingCert,
+                        category: e.target.value as TrainingCategory
+                      })
+                    }
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-bold"
+                  >
+                    <option value="bilgi-islem">Bilgi İşlem</option>
+                    <option value="depocu">Depocu Eğitim</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Eğitim / Sınav Başlığı:
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editingCert.trainingTitle}
+                  onChange={e =>
+                    setEditingCert({ ...editingCert, trainingTitle: e.target.value })
+                  }
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-semibold"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Doğru Sayısı:
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={20}
+                    value={editingCert.quizScore ?? 5}
+                    onChange={e =>
+                      setEditingCert({
+                        ...editingCert,
+                        quizScore: Number(e.target.value)
+                      })
+                    }
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Toplam Soru:
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={editingCert.quizTotal ?? 5}
+                    onChange={e =>
+                      setEditingCert({
+                        ...editingCert,
+                        quizTotal: Number(e.target.value)
+                      })
+                    }
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Sertifika No:
+                  </label>
+                  <input
+                    type="text"
+                    value={editingCert.certificateId}
+                    onChange={e =>
+                      setEditingCert({ ...editingCert, certificateId: e.target.value })
+                    }
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleExecuteDeleteCertificate(editingCert.id)}
+                  className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Sertifikayı Sil</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingCert(null)}
+                    className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold cursor-pointer"
+                  >
+                    İptal
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold flex items-center gap-1.5 shadow cursor-pointer"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Değişiklikleri Kaydet</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* HIGH-RESOLUTION CERTIFICATE ALBUM PREVIEW MODAL */}
       {previewCertificate && (
         <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-4xl w-full overflow-hidden shadow-2xl animate-in zoom-in-95 duration-150">
-            <div className="p-4 sm:p-5 bg-slate-900 text-white flex items-center justify-between">
+            <div className="p-4 sm:p-5 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <Sparkles className="w-5 h-5 text-amber-400" />
                 <div>
@@ -749,7 +1095,28 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {isAdmin && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEditingCert({ ...previewCertificate.completion })}
+                      className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 shadow cursor-pointer"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                      <span>Düzenle</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExecuteDeleteCertificate(previewCertificate.completion.id)}
+                      className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold flex items-center gap-1.5 shadow cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Sertifikayı Sil</span>
+                    </button>
+                  </>
+                )}
+
                 <button
                   type="button"
                   onClick={() => downloadCertificatePdf(previewCertificate.completion)}

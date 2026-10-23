@@ -393,6 +393,34 @@ export async function recordTrainingCompletion(completion: TrainingCompletion): 
 }
 
 /**
+ * Update an existing training completion / certificate record and sync to Firestore
+ */
+export async function updateTrainingCompletion(updatedComp: TrainingCompletion): Promise<TrainingCompletion[]> {
+  try {
+    const list = getStoredCompletions();
+    const updated = list.map(c => (c.id === updatedComp.id ? updatedComp : c));
+    localStorage.setItem(STORAGE_COMPLETIONS_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('completions_updated', { detail: updated }));
+    trainingChannel?.postMessage({ type: 'COMPLETIONS_UPDATED', completions: updated });
+
+    try {
+      const cleanPayload = JSON.parse(JSON.stringify(updated));
+      await setDoc(TRAINING_COMPLETIONS_DOC, {
+        completions: cleanPayload,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (fsErr) {
+      handleFirestoreError(fsErr, OperationType.WRITE, 'appData/training_completions');
+    }
+
+    return updated;
+  } catch (err) {
+    console.error('Error updating completion:', err);
+    return getStoredCompletions();
+  }
+}
+
+/**
  * Delete a single training completion record and sync to Firestore
  */
 export async function deleteTrainingCompletion(completionId: string): Promise<TrainingCompletion[]> {

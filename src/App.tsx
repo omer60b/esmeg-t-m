@@ -12,6 +12,7 @@ import {
   resetTrainingsToDefault,
   getStoredCompletions, 
   recordTrainingCompletion, 
+  updateTrainingCompletion,
   clearAllCompletions,
   deleteTrainingCompletion,
   getStoredAnnouncements,
@@ -206,6 +207,11 @@ export default function App() {
 
   const handleDeleteCompletion = async (completionId: string) => {
     const updated = await deleteTrainingCompletion(completionId);
+    setCompletions(updated);
+  };
+
+  const handleUpdateCompletion = async (updatedComp: TrainingCompletion) => {
+    const updated = await updateTrainingCompletion(updatedComp);
     setCompletions(updated);
   };
 
@@ -405,6 +411,9 @@ export default function App() {
               completions={completions}
               currentBranchId={currentBranchId}
               currentPersonnel={currentPersonnel}
+              isAdmin={isAdmin}
+              onUpdateCompletion={handleUpdateCompletion}
+              onDeleteCompletion={handleDeleteCompletion}
             />
           )}
 
