@@ -34,6 +34,7 @@ import { AdminTrainingPanel } from './components/AdminTrainingPanel';
 import { TebellugTrackingView } from './components/TebellugTrackingView';
 import { LeaderboardView } from './components/LeaderboardView';
 import { AdminAuthModal } from './components/AdminAuthModal';
+import { FloatingAIRobotBot } from './components/FloatingAIRobotBot';
 
 export default function App() {
   const [trainings, setTrainings] = useState<TrainingDocument[]>(() => getStoredTrainings());
@@ -43,16 +44,16 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<'all' | TrainingCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Global Theme Mode ('sepia' | 'light' | 'dark') across all pages
+  // Global Theme Mode ('sepia' | 'light' | 'dark') across all pages — Initial default: 'sepia' (Kitap Kağıdı)
   const [appTheme, setAppTheme] = useState<AppThemeMode>(() => {
     try {
-      const saved = localStorage.getItem('esme_app_theme') as AppThemeMode | null;
+      const saved = localStorage.getItem('esme_app_theme_v2') as AppThemeMode | null;
       if (saved === 'sepia' || saved === 'light' || saved === 'dark') {
         return saved;
       }
-      return 'light';
+      return 'sepia';
     } catch {
-      return 'light';
+      return 'sepia';
     }
   });
 
@@ -61,7 +62,7 @@ export default function App() {
   // Sync theme classes on <html> element for high-contrast readability across all modals & pages
   useEffect(() => {
     try {
-      localStorage.setItem('esme_app_theme', appTheme);
+      localStorage.setItem('esme_app_theme_v2', appTheme);
     } catch {}
     const root = document.documentElement;
     root.classList.remove('dark', 'theme-light', 'theme-sepia');
@@ -146,15 +147,10 @@ export default function App() {
 
   const currentBranch = officialEsmeBranches.find(b => b.id === currentBranchId) || officialEsmeBranches[0];
 
-  // Calculate pending trainings count for the active branch
-  const pendingCount = useMemo(() => {
-    const completedIds = new Set(
-      completions
-        .filter(c => Number(c.branchId) === Number(currentBranchId))
-        .map(c => c.trainingId)
-    );
-    return trainings.filter(t => !completedIds.has(t.id)).length;
-  }, [trainings, completions, currentBranchId]);
+  // Active announcements count for the notification bell
+  const activeAnnouncementsCount = useMemo(() => {
+    return announcements.filter(a => a.isActive).length;
+  }, [announcements]);
 
   const handleOpenTrainingDetail = (
     training: TrainingDocument, 
@@ -216,6 +212,8 @@ export default function App() {
   const handleSaveAnnouncements = async (updated: TrainingAnnouncement[]) => {
     await saveAnnouncements(updated);
     setAnnouncements(updated);
+    // Trigger periodic notification system immediately when manager publishes/updates an announcement
+    setBellTrigger(prev => prev + 1);
   };
 
   const bilgiIslemCount = trainings.filter(t => t.category === 'bilgi-islem').length;
@@ -252,7 +250,7 @@ export default function App() {
           depocuCount={depocuCount}
           appTheme={appTheme}
           setAppTheme={setAppTheme}
-          pendingCount={pendingCount}
+          pendingCount={activeAnnouncementsCount}
           onClickPendingBell={() => setBellTrigger(prev => prev + 1)}
         />
 
@@ -332,14 +330,11 @@ export default function App() {
             onRequestAdminAuth={() => setShowAdminAuthModal(true)}
           />
 
-          {/* Pending Trainings Box & Periodic Reminder Notification System */}
+          {/* Periodic Notification System (Triggered When Managers Publish Announcements) */}
           <PendingTrainingsReminder
-            trainings={trainings}
-            completions={completions}
+            announcements={announcements}
             currentBranchId={currentBranchId}
             currentPersonnel={currentPersonnel}
-            onSelectTraining={handleOpenTrainingDetail}
-            onOpenTebellugTab={() => setTrainingActiveTab('tebellug')}
             appTheme={appTheme}
             bellTrigger={bellTrigger}
           />
@@ -483,6 +478,16 @@ export default function App() {
             </div>
           </div>
         </footer>
+
+        {/* Small Moving AI Bot Robot at Bottom-Right (Reach Managers & Smart AI Assistant) */}
+        <FloatingAIRobotBot
+          trainings={trainings}
+          announcements={announcements}
+          currentBranchId={currentBranchId}
+          currentPersonnel={currentPersonnel}
+          isAdmin={isAdmin}
+          onSelectTraining={handleOpenTrainingDetail}
+        />
 
         {/* Detail / Classroom Modal */}
         {selectedTraining && (

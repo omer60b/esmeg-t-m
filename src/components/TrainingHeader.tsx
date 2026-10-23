@@ -14,6 +14,8 @@ import {
 import { TrainingCategory } from '../types';
 import { officialEsmeBranches } from '../mockData';
 
+export type AppThemeMode = 'sepia' | 'light' | 'dark';
+
 interface TrainingHeaderProps {
   activeTab: 'catalog' | 'ebook' | 'video' | 'tebellug' | 'leaderboard' | 'admin';
   setActiveTab: (tab: 'catalog' | 'ebook' | 'video' | 'tebellug' | 'leaderboard' | 'admin') => void;
@@ -31,8 +33,8 @@ interface TrainingHeaderProps {
   totalCount?: number;
   bilgiIslemCount?: number;
   depocuCount?: number;
-  appTheme?: 'sepia' | 'light' | 'dark';
-  setAppTheme?: (theme: 'sepia' | 'light' | 'dark') => void;
+  appTheme?: AppThemeMode;
+  setAppTheme?: (theme: AppThemeMode) => void;
   pendingCount?: number;
   onClickPendingBell?: () => void;
 }
@@ -49,7 +51,7 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
   isAdmin,
   setIsAdmin,
   onOpenAdminAuth,
-  appTheme = 'light',
+  appTheme = 'sepia',
   setAppTheme,
   pendingCount = 0,
   onClickPendingBell

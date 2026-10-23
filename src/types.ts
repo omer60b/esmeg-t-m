@@ -139,3 +139,19 @@ export interface TrainingAnnouncement {
   isActive: boolean;
 }
 
+export interface SupportMessage {
+  id: string;
+  branchId: number;
+  branchName: string;
+  personnelName: string;
+  targetManager: 'Ömer BAŞ (Bilgi İşlem)' | 'Turgut CESUR (Depo Yönetimi)' | 'Genel Yönetim';
+  userMessage: string;
+  aiAutoReply?: string;
+  adminReply?: string;
+  adminResponder?: string;
+  repliedAt?: string;
+  status: 'pending' | 'replied';
+  createdAt: string;
+}
+
+

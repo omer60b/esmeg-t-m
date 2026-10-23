@@ -8,7 +8,7 @@ import {
   deleteDoc 
 } from 'firebase/firestore';
 import { db, OperationType, handleFirestoreError } from './firebaseService';
-import { TrainingDocument, TrainingCompletion, TrainingCategory, TrainingAnnouncement } from '../types';
+import { TrainingDocument, TrainingCompletion, TrainingCategory, TrainingAnnouncement, SupportMessage } from '../types';
 import { initialTrainings } from '../data/trainingData';
 
 const STORAGE_TRAININGS_KEY = 'esme_akademi_trainings_v2';
@@ -18,12 +18,14 @@ const STORAGE_DELETED_IDS_KEY = 'esme_deleted_training_ids_v1';
 const STORAGE_CUSTOM_ADMINS_KEY = 'esme_custom_admins';
 const STORAGE_ADMIN_PASSWORDS_KEY = 'esme_admin_passwords';
 const STORAGE_ANNOUNCEMENTS_KEY = 'esme_training_announcements_v1';
+const STORAGE_SUPPORT_MESSAGES_KEY = 'esme_support_messages_v1';
 
 const TRAINING_CATALOG_DOC = doc(db, 'appData', 'trainings_catalog');
 const TRAINING_META_DOC = doc(db, 'appData', 'trainings_meta');
 const TRAINING_COMPLETIONS_DOC = doc(db, 'appData', 'training_completions');
 const ADMIN_ACCOUNTS_DOC = doc(db, 'appData', 'admin_accounts');
 const TRAINING_ANNOUNCEMENTS_DOC = doc(db, 'appData', 'training_announcements');
+const SUPPORT_MESSAGES_DOC = doc(db, 'appData', 'support_messages');
 const TRAININGS_COLLECTION = collection(db, 'trainings');
 
 // BroadcastChannel for instant multi-tab sync on the same browser
@@ -513,6 +515,91 @@ export async function saveAnnouncements(announcements: TrainingAnnouncement[]): 
     return false;
   }
 }
+
+export function getStoredSupportMessages(): SupportMessage[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_SUPPORT_MESSAGES_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (err) {
+    console.error('Failed to read support messages:', err);
+  }
+  return [];
+}
+
+export async function saveSupportMessages(messages: SupportMessage[]): Promise<boolean> {
+  try {
+    localStorage.setItem(STORAGE_SUPPORT_MESSAGES_KEY, JSON.stringify(messages));
+    window.dispatchEvent(new CustomEvent('support_messages_updated', { detail: messages }));
+    trainingChannel?.postMessage({ type: 'SUPPORT_MESSAGES_UPDATED', messages });
+
+    try {
+      await setDoc(SUPPORT_MESSAGES_DOC, {
+        messages: JSON.parse(JSON.stringify(messages)),
+        updatedAt: new Date().toISOString()
+      });
+    } catch (fsErr) {
+      handleFirestoreError(fsErr, OperationType.WRITE, 'appData/support_messages');
+    }
+    return true;
+  } catch (err) {
+    console.error('Error saving support messages:', err);
+    return false;
+  }
+}
+
+export function subscribeToSupportMessages(
+  onUpdate: (messages: SupportMessage[]) => void
+): () => void {
+  const unsubFs = onSnapshot(
+    SUPPORT_MESSAGES_DOC,
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data && Array.isArray(data.messages)) {
+          localStorage.setItem(STORAGE_SUPPORT_MESSAGES_KEY, JSON.stringify(data.messages));
+          onUpdate(data.messages);
+        }
+      }
+    },
+    () => {}
+  );
+
+  const handleLocal = (e: Event) => {
+    const ce = e as CustomEvent<SupportMessage[]>;
+    if (ce.detail && Array.isArray(ce.detail)) {
+      onUpdate(ce.detail);
+    } else {
+      onUpdate(getStoredSupportMessages());
+    }
+  };
+
+  const handleStorage = (e: StorageEvent) => {
+    if (e.key === STORAGE_SUPPORT_MESSAGES_KEY) {
+      onUpdate(getStoredSupportMessages());
+    }
+  };
+
+  const handleBroadcast = (e: MessageEvent) => {
+    if (e.data?.type === 'SUPPORT_MESSAGES_UPDATED' && Array.isArray(e.data.messages)) {
+      onUpdate(e.data.messages);
+    }
+  };
+
+  window.addEventListener('support_messages_updated', handleLocal);
+  window.addEventListener('storage', handleStorage);
+  trainingChannel?.addEventListener('message', handleBroadcast);
+
+  return () => {
+    unsubFs();
+    window.removeEventListener('support_messages_updated', handleLocal);
+    window.removeEventListener('storage', handleStorage);
+    trainingChannel?.removeEventListener('message', handleBroadcast);
+  };
+}
+
 
 /**
  * Subscribe to real-time training updates from Firestore, localStorage & BroadcastChannel
