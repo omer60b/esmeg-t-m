@@ -38,6 +38,8 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
+import { isYouTubeUrl, getYouTubeThumbnailUrl, UniversalVideoPlayer } from '../utils/videoUtils';
+
 export interface CustomAdminAccount {
   id: string;
   username: string;
@@ -57,6 +59,8 @@ interface AdminTrainingPanelProps {
   onClose: () => void;
   onClearCompletions?: () => void;
   onResetTrainings?: () => void;
+  initialVideoUrl?: string | null;
+  onClearInitialVideoUrl?: () => void;
 }
 
 export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
@@ -67,7 +71,9 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
   onOpenTrainingDetail,
   onClose,
   onClearCompletions,
-  onResetTrainings
+  onResetTrainings,
+  initialVideoUrl,
+  onClearInitialVideoUrl
 }) => {
   const [activeAdminTab, setActiveAdminTab] = useState<'trainings' | 'reports' | 'admins'>('trainings');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -302,7 +308,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
   };
 
   // Open modal in create mode
-  const handleOpenCreate = () => {
+  const handleOpenCreate = (prefillVideoUrl?: string) => {
     setEditingTraining(null);
     setFormCategory('bilgi-islem');
     setFormPriority('zorunlu');
@@ -315,7 +321,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     setFormSummary('');
     setFormPdfPath('/assets/aistudio/Bilgi___lem_ve_Kasa_Y_netimi_Genel_E_itim_Talimat__085ba22b.pdf');
     setVideoInputType('link');
-    setFormVideoUrl('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4');
+    setFormVideoUrl(prefillVideoUrl || '');
     setFormVideoTitle('');
     setFormVideoDuration('05:00');
     setDeviceVideoFileName('');
@@ -330,6 +336,13 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     ]);
     setShowAddModal(true);
   };
+
+  useEffect(() => {
+    if (initialVideoUrl) {
+      handleOpenCreate(initialVideoUrl);
+      if (onClearInitialVideoUrl) onClearInitialVideoUrl();
+    }
+  }, [initialVideoUrl]);
 
   // Open modal in edit mode
   const handleOpenEdit = (training: TrainingDocument) => {
@@ -347,7 +360,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     setFormVideoUrl(training.videoUrl || '');
     setFormVideoTitle(training.videoTitle || '');
     setFormVideoDuration(training.videoDuration || '05:00');
-    setVideoInputType(training.videoType || 'link');
+    setVideoInputType(training.videoType === 'none' ? 'none' : (training.videoType || 'link'));
     setChapters(training.chapters || []);
     setQuizzes(training.quiz || []);
     setShowAddModal(true);
@@ -361,7 +374,10 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
       return;
     }
 
+    const hasValidVideo = videoInputType !== 'none' && Boolean(formVideoUrl.trim());
+
     const payload: TrainingDocument = {
+      ...(editingTraining || {}),
       id: editingTraining ? editingTraining.id : `custom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       title: formTitle.trim(),
       subTitle: formSubTitle.trim() || 'Standart Kurumsal Yönerge ve Uygulama Prosedürü',
@@ -373,8 +389,8 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
       priority: formPriority,
       summary: formSummary.trim() || formTitle.trim(),
       pdfPath: formPdfPath.trim() || undefined,
-      videoType: videoInputType,
-      videoUrl: formVideoUrl.trim() || undefined,
+      videoType: hasValidVideo ? videoInputType : 'none',
+      videoUrl: hasValidVideo ? formVideoUrl.trim() : undefined,
       videoTitle: formVideoTitle.trim() || formTitle.trim(),
       videoDuration: formVideoDuration.trim() || '05:00',
       chapters: chapters.length > 0 ? chapters : [
@@ -385,7 +401,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
         }
       ],
       quiz: quizzes,
-      isCustom: true,
+      isCustom: editingTraining ? editingTraining.isCustom : true,
       createdAt: editingTraining?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -442,7 +458,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={handleOpenCreate}
+            onClick={() => handleOpenCreate()}
             className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-red-900/40 transition cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -932,8 +948,13 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                 <button
                   onClick={() => {
                     if (confirm('Tüm eğitimler fabrika ayarlarına döndürülecektir. Devam edilsin mi?')) {
-                      localStorage.removeItem('esme_training_docs');
-                      window.location.reload();
+                      if (onResetTrainings) {
+                        onResetTrainings();
+                      } else {
+                        localStorage.removeItem('esme_akademi_trainings_v2');
+                        localStorage.removeItem('esme_deleted_training_ids_v1');
+                        window.location.reload();
+                      }
                     }
                   }}
                   className="px-4 py-2 bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
@@ -1224,60 +1245,107 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
 
               {/* VIDEO ATTACHMENT SECTION (ONLY ADMINS CAN UPLOAD / ADD VIDEOS) */}
               <div className="bg-sky-50/60 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900 rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h4 className="font-extrabold text-sky-900 dark:text-sky-300 flex items-center gap-1.5">
                     <Video className="w-4 h-4 text-sky-600" />
-                    Videolu Eğitim Entegrasyonu (Sadece Yönetici Ekleyebilir)
+                    Videolu Eğitim & YouTube Entegrasyonu (Anlık Tüm Kullanıcılara Yansır)
                   </h4>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setVideoInputType('link')}
-                      className={`px-2.5 py-1 rounded text-[11px] font-bold ${videoInputType === 'link' ? 'bg-sky-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600'}`}
+                      className={`px-2.5 py-1 rounded text-[11px] font-bold cursor-pointer ${videoInputType === 'link' ? 'bg-sky-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
                     >
-                      Web Linki
+                      YouTube / Web Linki
                     </button>
                     <button
                       type="button"
                       onClick={() => setVideoInputType('file')}
-                      className={`px-2.5 py-1 rounded text-[11px] font-bold ${videoInputType === 'file' ? 'bg-sky-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600'}`}
+                      className={`px-2.5 py-1 rounded text-[11px] font-bold cursor-pointer ${videoInputType === 'file' ? 'bg-sky-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
                     >
-                      Cihazımdan Yükle
+                      Cihazımdan Seç
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVideoInputType('none');
+                        setFormVideoUrl('');
+                      }}
+                      className={`px-2.5 py-1 rounded text-[11px] font-bold cursor-pointer ${videoInputType === 'none' ? 'bg-rose-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
+                    >
+                      Video Yok
                     </button>
                   </div>
                 </div>
 
-                {videoInputType === 'link' ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[11px] text-slate-500 block mb-1">Video Web Linki (MP4 / YouTube / CDN):</label>
-                      <input
-                        type="url"
-                        value={formVideoUrl}
-                        onChange={(e) => setFormVideoUrl(e.target.value)}
-                        placeholder="https://.../video.mp4"
-                        className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs"
-                      />
+                {videoInputType === 'link' && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                          YouTube Linki veya MP4 Web Adresi:
+                        </label>
+                        <input
+                          type="text"
+                          value={formVideoUrl}
+                          onChange={(e) => setFormVideoUrl(e.target.value)}
+                          placeholder="Örn: https://www.youtube.com/watch?v=... veya https://youtu.be/..."
+                          className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                          Tahmini Video Süresi:
+                        </label>
+                        <input
+                          type="text"
+                          value={formVideoDuration}
+                          onChange={(e) => setFormVideoDuration(e.target.value)}
+                          placeholder="Örn: 05:00"
+                          className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs"
+                        />
+                      </div>
                     </div>
+
                     <div>
-                      <label className="text-[11px] text-slate-500 block mb-1">Tahmini Video Süresi:</label>
+                      <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                        Video Başlığı (İsteğe Bağlı):
+                      </label>
                       <input
                         type="text"
-                        value={formVideoDuration}
-                        onChange={(e) => setFormVideoDuration(e.target.value)}
-                        placeholder="Örn: 05:00"
+                        value={formVideoTitle}
+                        onChange={(e) => setFormVideoTitle(e.target.value)}
+                        placeholder="Örn: Kasa İşlemleri Uygulamalı Eğitim Videosu"
                         className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs"
                       />
                     </div>
+
+                    {/* Live Preview inside Modal if YouTube or Video URL entered */}
+                    {formVideoUrl.trim() && (
+                      <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                        <div className="flex items-center justify-between text-[11px] text-slate-300">
+                          <span className="font-bold text-emerald-400">
+                            ✓ Canlı Video Önizlemesi ({isYouTubeUrl(formVideoUrl) ? 'YouTube Videosu Algılandı' : 'Doğrudan Video Bağlantısı'})
+                          </span>
+                        </div>
+                        <div className="aspect-video max-h-56 w-full rounded-lg overflow-hidden bg-black">
+                          <UniversalVideoPlayer src={formVideoUrl} title={formVideoTitle || formTitle || 'Önizleme'} />
+                        </div>
+                      </div>
+                    )}
                   </div>
-                ) : (
+                )}
+
+                {videoInputType === 'file' && (
                   <div className="space-y-2">
                     <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-sky-300 dark:border-sky-800 rounded-xl cursor-pointer hover:bg-sky-100/50 dark:hover:bg-sky-950/40 transition">
                       <Upload className="w-6 h-6 text-sky-600 mb-1" />
                       <span className="font-bold text-sky-900 dark:text-sky-300">
                         {deviceVideoFileName ? `Seçilen Video: ${deviceVideoFileName}` : 'Telefonunuzdan veya Bilgisayarınızdan Video Seçin'}
                       </span>
-                      <span className="text-[11px] text-slate-400">MP4, WebM, MOV desteklenir</span>
+                      <span className="text-[11px] text-slate-500 text-center mt-1">
+                        Not: Diğer tüm şube ve cihazlardaki kullanıcıların anında izleyebilmesi için <strong>YouTube / Web Linki</strong> sekmesini kullanmanız önerilir.
+                      </span>
                       <input
                         type="file"
                         accept="video/*"

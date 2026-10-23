@@ -1,13 +1,45 @@
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  onSnapshot, 
+  collection, 
+  getDocs, 
+  deleteDoc 
+} from 'firebase/firestore';
 import { db, OperationType, handleFirestoreError } from './firebaseService';
 import { TrainingDocument, TrainingCompletion, TrainingCategory } from '../types';
 import { initialTrainings } from '../data/trainingData';
 
 const STORAGE_TRAININGS_KEY = 'esme_akademi_trainings_v2';
 const STORAGE_COMPLETIONS_KEY = 'esme_akademi_completions_v1';
+const STORAGE_DELETED_IDS_KEY = 'esme_deleted_training_ids_v1';
 
 const TRAINING_CATALOG_DOC = doc(db, 'appData', 'trainings_catalog');
 const TRAINING_COMPLETIONS_DOC = doc(db, 'appData', 'training_completions');
+const TRAININGS_COLLECTION = collection(db, 'trainings');
+
+// BroadcastChannel for instant multi-tab sync on the same browser
+const trainingChannel = typeof BroadcastChannel !== 'undefined' 
+  ? new BroadcastChannel('esme_trainings_realtime_channel') 
+  : null;
+
+function getDeletedIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_DELETED_IDS_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return new Set(arr);
+    }
+  } catch {}
+  return new Set();
+}
+
+function saveDeletedIds(ids: Set<string>): void {
+  try {
+    localStorage.setItem(STORAGE_DELETED_IDS_KEY, JSON.stringify(Array.from(ids)));
+  } catch {}
+}
 
 export function normalizeTrainings(items: TrainingDocument[]): TrainingDocument[] {
   const defaultCategoryMap = new Map<string, TrainingCategory>();
@@ -22,6 +54,48 @@ export function normalizeTrainings(items: TrainingDocument[]): TrainingDocument[
 }
 
 /**
+ * Merge any incoming trainings array with initialTrainings & custom trainings
+ * so new custom trainings are placed at the top and default trainings preserve admin edits
+ */
+export function mergeTrainingsList(
+  incoming: TrainingDocument[],
+  deletedIds: Set<string> = getDeletedIds()
+): TrainingDocument[] {
+  const customMap = new Map<string, TrainingDocument>();
+  const defaultMap = new Map<string, TrainingDocument>();
+
+  initialTrainings.forEach(t => {
+    if (!deletedIds.has(t.id)) {
+      defaultMap.set(t.id, t);
+    }
+  });
+
+  incoming.forEach((t: TrainingDocument) => {
+    if (!t || !t.id || deletedIds.has(t.id)) return;
+    if (defaultMap.has(t.id)) {
+      const existing = defaultMap.get(t.id)!;
+      defaultMap.set(t.id, {
+        ...existing,
+        ...t,
+        category: t.category || existing.category
+      });
+    } else {
+      customMap.set(t.id, { ...t, isCustom: true });
+    }
+  });
+
+  // Sort custom trainings newest first
+  const customList = Array.from(customMap.values()).sort((a, b) => {
+    const timeA = a.updatedAt || a.createdAt || '';
+    const timeB = b.updatedAt || b.createdAt || '';
+    return timeB.localeCompare(timeA);
+  });
+
+  const combined = [...customList, ...Array.from(defaultMap.values())];
+  return normalizeTrainings(combined);
+}
+
+/**
  * Get current trainings from localStorage, or return initialTrainings
  */
 export function getStoredTrainings(): TrainingDocument[] {
@@ -30,22 +104,7 @@ export function getStoredTrainings(): TrainingDocument[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Merge with initialTrainings to make sure default 11 are always intact and up to date
-        const map = new Map<string, TrainingDocument>();
-        initialTrainings.forEach(t => map.set(t.id, t));
-        parsed.forEach((t: TrainingDocument) => {
-          if (t.isCustom) {
-            map.set(t.id, t);
-          } else {
-            // keep any admin edits to default trainings but enforce category
-            const existing = map.get(t.id);
-            if (existing) {
-              map.set(t.id, { ...existing, ...t, category: existing.category });
-            }
-          }
-        });
-        const result = Array.from(map.values());
-        return normalizeTrainings(result);
+        return mergeTrainingsList(parsed);
       }
     }
   } catch (err) {
@@ -55,18 +114,21 @@ export function getStoredTrainings(): TrainingDocument[] {
 }
 
 /**
- * Save trainings to localStorage and Firestore
+ * Save trainings to localStorage and Firestore (both catalog doc and individual docs)
  */
 export async function saveTrainings(trainings: TrainingDocument[]): Promise<boolean> {
   try {
-    localStorage.setItem(STORAGE_TRAININGS_KEY, JSON.stringify(trainings));
-    window.dispatchEvent(new CustomEvent('trainings_updated', { detail: trainings }));
+    const merged = mergeTrainingsList(trainings);
+    localStorage.setItem(STORAGE_TRAININGS_KEY, JSON.stringify(merged));
+    window.dispatchEvent(new CustomEvent('trainings_updated', { detail: merged }));
+    trainingChannel?.postMessage({ type: 'TRAININGS_UPDATED', trainings: merged });
 
-    // Sync to Firestore
+    // Sync to Firestore catalog document
     try {
-      const cleanPayload = JSON.parse(JSON.stringify(trainings));
+      const cleanPayload = JSON.parse(JSON.stringify(merged));
       await setDoc(TRAINING_CATALOG_DOC, {
         trainings: cleanPayload,
+        deletedIds: Array.from(getDeletedIds()),
         updatedAt: new Date().toISOString()
       }, { merge: true });
     } catch (fsErr) {
@@ -81,38 +143,94 @@ export async function saveTrainings(trainings: TrainingDocument[]): Promise<bool
 }
 
 /**
- * Add or update a training document
+ * Add or update a training document and sync immediately to Firestore
  */
 export async function upsertTraining(training: TrainingDocument): Promise<boolean> {
+  const deletedIds = getDeletedIds();
+  if (deletedIds.has(training.id)) {
+    deletedIds.delete(training.id);
+    saveDeletedIds(deletedIds);
+  }
+
   const current = getStoredTrainings();
   const index = current.findIndex(t => t.id === training.id);
-  let updated: TrainingDocument[];
+  const now = new Date().toISOString();
+  const isDefault = initialTrainings.some(t => t.id === training.id);
 
+  const normalizedItem: TrainingDocument = {
+    ...training,
+    isCustom: !isDefault,
+    createdAt: training.createdAt || now,
+    updatedAt: now
+  };
+
+  let updated: TrainingDocument[];
   if (index >= 0) {
     updated = [...current];
-    updated[index] = { ...training, updatedAt: new Date().toISOString() };
+    updated[index] = normalizedItem;
   } else {
-    updated = [
-      {
-        ...training,
-        isCustom: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      },
-      ...current
-    ];
+    updated = [normalizedItem, ...current];
+  }
+
+  // Also write individual document to `trainings/{id}` collection for guaranteed real-time sync
+  try {
+    const cleanItem = JSON.parse(JSON.stringify(normalizedItem));
+    await setDoc(doc(db, 'trainings', normalizedItem.id), cleanItem, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `trainings/${normalizedItem.id}`);
   }
 
   return saveTrainings(updated);
 }
 
 /**
- * Delete a custom training document
+ * Delete a training document and sync deletion to Firestore
  */
 export async function deleteTraining(id: string): Promise<boolean> {
+  const deletedIds = getDeletedIds();
+  deletedIds.add(id);
+  saveDeletedIds(deletedIds);
+
   const current = getStoredTrainings();
   const updated = current.filter(t => t.id !== id);
+
+  try {
+    await deleteDoc(doc(db, 'trainings', id));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `trainings/${id}`);
+  }
+
   return saveTrainings(updated);
+}
+
+/**
+ * Reset trainings to factory defaults and sync to Firestore
+ */
+export async function resetTrainingsToDefault(): Promise<TrainingDocument[]> {
+  try {
+    localStorage.removeItem(STORAGE_DELETED_IDS_KEY);
+    localStorage.setItem(STORAGE_TRAININGS_KEY, JSON.stringify(initialTrainings));
+    window.dispatchEvent(new CustomEvent('trainings_updated', { detail: initialTrainings }));
+    trainingChannel?.postMessage({ type: 'TRAININGS_UPDATED', trainings: initialTrainings });
+
+    // Clear custom docs in `trainings` collection
+    try {
+      const snap = await getDocs(TRAININGS_COLLECTION);
+      for (const d of snap.docs) {
+        await deleteDoc(doc(db, 'trainings', d.id));
+      }
+    } catch {}
+
+    const cleanPayload = JSON.parse(JSON.stringify(initialTrainings));
+    await setDoc(TRAINING_CATALOG_DOC, {
+      trainings: cleanPayload,
+      deletedIds: [],
+      updatedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Error resetting trainings:', err);
+  }
+  return initialTrainings;
 }
 
 /**
@@ -137,9 +255,20 @@ export function getStoredCompletions(): TrainingCompletion[] {
 export async function recordTrainingCompletion(completion: TrainingCompletion): Promise<boolean> {
   try {
     const list = getStoredCompletions();
-    const updated = [completion, ...list.filter(c => !(c.trainingId === completion.trainingId && c.personnelName.toLowerCase() === completion.personnelName.toLowerCase() && c.branchId === completion.branchId))];
+    const updated = [
+      completion,
+      ...list.filter(
+        c =>
+          !(
+            c.trainingId === completion.trainingId &&
+            c.personnelName.toLowerCase() === completion.personnelName.toLowerCase() &&
+            c.branchId === completion.branchId
+          )
+      )
+    ];
     localStorage.setItem(STORAGE_COMPLETIONS_KEY, JSON.stringify(updated));
     window.dispatchEvent(new CustomEvent('completions_updated', { detail: updated }));
+    trainingChannel?.postMessage({ type: 'COMPLETIONS_UPDATED', completions: updated });
 
     try {
       const cleanPayload = JSON.parse(JSON.stringify(updated));
@@ -159,25 +288,67 @@ export async function recordTrainingCompletion(completion: TrainingCompletion): 
 }
 
 /**
- * Subscribe to real-time training updates from Firestore
+ * Subscribe to real-time training updates from Firestore, localStorage & BroadcastChannel
  */
 export function subscribeToTrainingUpdates(
   onTrainingsUpdate: (trainings: TrainingDocument[]) => void,
   onCompletionsUpdate: (completions: TrainingCompletion[]) => void
 ): () => void {
+  let latestCatalogItems: TrainingDocument[] = [];
+  let latestCollectionItems: TrainingDocument[] = [];
+
+  const emitCombinedTrainings = (remoteDeletedIds?: string[]) => {
+    if (remoteDeletedIds && Array.isArray(remoteDeletedIds)) {
+      saveDeletedIds(new Set(remoteDeletedIds));
+    }
+    const deletedSet = getDeletedIds();
+    // Combine catalog items and individual collection items (collection items take precedence as they are individual upserts)
+    const map = new Map<string, TrainingDocument>();
+    latestCatalogItems.forEach(t => {
+      if (t && t.id && !deletedSet.has(t.id)) map.set(t.id, t);
+    });
+    latestCollectionItems.forEach(t => {
+      if (t && t.id && !deletedSet.has(t.id)) map.set(t.id, t);
+    });
+
+    if (map.size > 0 || latestCatalogItems.length > 0 || latestCollectionItems.length > 0) {
+      const merged = mergeTrainingsList(Array.from(map.values()), deletedSet);
+      localStorage.setItem(STORAGE_TRAININGS_KEY, JSON.stringify(merged));
+      onTrainingsUpdate(merged);
+    }
+  };
+
+  // 1. Firestore Catalog Doc Listener
   const unsubCatalog = onSnapshot(TRAINING_CATALOG_DOC, (snap) => {
     if (snap.exists()) {
       const data = snap.data();
-      if (data && Array.isArray(data.trainings) && data.trainings.length > 0) {
-        const normalized = normalizeTrainings(data.trainings);
-        localStorage.setItem(STORAGE_TRAININGS_KEY, JSON.stringify(normalized));
-        onTrainingsUpdate(normalized);
+      if (data && Array.isArray(data.trainings)) {
+        latestCatalogItems = data.trainings;
+        emitCombinedTrainings(data.deletedIds);
       }
     }
   }, (err) => {
     handleFirestoreError(err, OperationType.GET, 'appData/trainings_catalog');
   });
 
+  // 2. Firestore Individual Trainings Collection Listener (ensures instant sync even for large payloads)
+  const unsubCollection = onSnapshot(TRAININGS_COLLECTION, (snap) => {
+    const docs: TrainingDocument[] = [];
+    snap.forEach((d) => {
+      const item = d.data() as TrainingDocument;
+      if (item && item.id && item.title) {
+        docs.push(item);
+      }
+    });
+    latestCollectionItems = docs;
+    if (docs.length > 0) {
+      emitCombinedTrainings();
+    }
+  }, (err) => {
+    handleFirestoreError(err, OperationType.LIST, 'trainings');
+  });
+
+  // 3. Firestore Completions Listener
   const unsubCompletions = onSnapshot(TRAINING_COMPLETIONS_DOC, (snap) => {
     if (snap.exists()) {
       const data = snap.data();
@@ -190,9 +361,54 @@ export function subscribeToTrainingUpdates(
     handleFirestoreError(err, OperationType.GET, 'appData/training_completions');
   });
 
+  // 4. Local CustomEvents, Cross-tab Storage Events & BroadcastChannel
+  const handleLocalTrainingsEvent = (e: Event) => {
+    const customEvent = e as CustomEvent<TrainingDocument[]>;
+    if (customEvent.detail && Array.isArray(customEvent.detail)) {
+      onTrainingsUpdate(customEvent.detail);
+    } else {
+      onTrainingsUpdate(getStoredTrainings());
+    }
+  };
+
+  const handleLocalCompletionsEvent = (e: Event) => {
+    const customEvent = e as CustomEvent<TrainingCompletion[]>;
+    if (customEvent.detail && Array.isArray(customEvent.detail)) {
+      onCompletionsUpdate(customEvent.detail);
+    } else {
+      onCompletionsUpdate(getStoredCompletions());
+    }
+  };
+
+  const handleStorageEvent = (e: StorageEvent) => {
+    if (e.key === STORAGE_TRAININGS_KEY) {
+      onTrainingsUpdate(getStoredTrainings());
+    } else if (e.key === STORAGE_COMPLETIONS_KEY) {
+      onCompletionsUpdate(getStoredCompletions());
+    }
+  };
+
+  const handleBroadcastMessage = (e: MessageEvent) => {
+    if (e.data?.type === 'TRAININGS_UPDATED' && Array.isArray(e.data.trainings)) {
+      onTrainingsUpdate(e.data.trainings);
+    } else if (e.data?.type === 'COMPLETIONS_UPDATED' && Array.isArray(e.data.completions)) {
+      onCompletionsUpdate(e.data.completions);
+    }
+  };
+
+  window.addEventListener('trainings_updated', handleLocalTrainingsEvent);
+  window.addEventListener('completions_updated', handleLocalCompletionsEvent);
+  window.addEventListener('storage', handleStorageEvent);
+  trainingChannel?.addEventListener('message', handleBroadcastMessage);
+
   return () => {
     unsubCatalog();
+    unsubCollection();
     unsubCompletions();
+    window.removeEventListener('trainings_updated', handleLocalTrainingsEvent);
+    window.removeEventListener('completions_updated', handleLocalCompletionsEvent);
+    window.removeEventListener('storage', handleStorageEvent);
+    trainingChannel?.removeEventListener('message', handleBroadcastMessage);
   };
 }
 
@@ -201,19 +417,45 @@ export function subscribeToTrainingUpdates(
  */
 export async function fetchRemoteTrainings(): Promise<{ trainings?: TrainingDocument[]; completions?: TrainingCompletion[] }> {
   try {
-    const snapCat = await getDoc(TRAINING_CATALOG_DOC);
-    let remoteTrainings: TrainingDocument[] | undefined;
-    if (snapCat.exists()) {
+    const [snapCat, snapCol, snapComp] = await Promise.all([
+      getDoc(TRAINING_CATALOG_DOC).catch(() => null),
+      getDocs(TRAININGS_COLLECTION).catch(() => null),
+      getDoc(TRAINING_COMPLETIONS_DOC).catch(() => null)
+    ]);
+
+    const map = new Map<string, TrainingDocument>();
+    let deletedSet = getDeletedIds();
+
+    if (snapCat && snapCat.exists()) {
       const data = snapCat.data();
+      if (data && Array.isArray(data.deletedIds)) {
+        deletedSet = new Set(data.deletedIds);
+        saveDeletedIds(deletedSet);
+      }
       if (data && Array.isArray(data.trainings)) {
-        remoteTrainings = normalizeTrainings(data.trainings);
-        localStorage.setItem(STORAGE_TRAININGS_KEY, JSON.stringify(remoteTrainings));
+        data.trainings.forEach((t: TrainingDocument) => {
+          if (t && t.id && !deletedSet.has(t.id)) map.set(t.id, t);
+        });
       }
     }
 
-    const snapComp = await getDoc(TRAINING_COMPLETIONS_DOC);
+    if (snapCol && !snapCol.empty) {
+      snapCol.forEach((d) => {
+        const item = d.data() as TrainingDocument;
+        if (item && item.id && item.title && !deletedSet.has(item.id)) {
+          map.set(item.id, item);
+        }
+      });
+    }
+
+    let remoteTrainings: TrainingDocument[] | undefined;
+    if (map.size > 0) {
+      remoteTrainings = mergeTrainingsList(Array.from(map.values()), deletedSet);
+      localStorage.setItem(STORAGE_TRAININGS_KEY, JSON.stringify(remoteTrainings));
+    }
+
     let remoteCompletions: TrainingCompletion[] | undefined;
-    if (snapComp.exists()) {
+    if (snapComp && snapComp.exists()) {
       const data = snapComp.data();
       if (data && Array.isArray(data.completions)) {
         remoteCompletions = data.completions;

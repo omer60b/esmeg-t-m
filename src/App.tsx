@@ -4,13 +4,13 @@ import {
   TrainingCategory, 
   TrainingCompletion,
   AppDatabase,
-  User,
-  Branch
+  User
 } from './types';
 import { 
   getStoredTrainings, 
   upsertTraining, 
   deleteTraining, 
+  resetTrainingsToDefault,
   getStoredCompletions, 
   recordTrainingCompletion, 
   subscribeToTrainingUpdates,
@@ -45,18 +45,6 @@ import { ProductsTab } from './components/ProductsTab';
 import { CountHistoryTab } from './components/CountHistoryTab';
 import { ReportsTab } from './components/ReportsTab';
 import { EvaluationsTab } from './components/EvaluationsTab';
-
-// Icons
-import { 
-  GraduationCap, 
-  Boxes, 
-  ShieldCheck, 
-  Building2, 
-  Activity, 
-  Sparkles,
-  ArrowRight,
-  Database
-} from 'lucide-react';
 
 export default function App() {
   // Master Portal Mode: 'training' (esmeegitim) vs 'sayim' (Stok & Kör Sayım)
@@ -106,9 +94,15 @@ export default function App() {
   });
 
   const [showAdminAuthModal, setShowAdminAuthModal] = useState(false);
-  const [selectedTraining, setSelectedTraining] = useState<TrainingDocument | null>(null);
+  const [selectedTrainingId, setSelectedTrainingId] = useState<string | null>(null);
   const [initialModalTab, setInitialModalTab] = useState<'content' | 'video' | 'pdf' | 'templates' | 'quiz' | 'presentation'>('content');
   const [ebookTargetTrainingId, setEbookTargetTrainingId] = useState<string | undefined>();
+  const [pendingAdminVideoUrl, setPendingAdminVideoUrl] = useState<string | null>(null);
+
+  // Always derive selectedTraining from live trainings state so real-time updates (like new YouTube links) appear immediately
+  const selectedTraining = selectedTrainingId 
+    ? trainings.find(t => t.id === selectedTrainingId) || null 
+    : null;
 
   // ==========================================
   // 2. STOCK & SAYIM PORTAL STATE & HANDLERS
@@ -184,7 +178,7 @@ export default function App() {
     training: TrainingDocument, 
     initialTab: 'content' | 'video' | 'pdf' | 'templates' | 'quiz' | 'presentation' = 'content'
   ) => {
-    setSelectedTraining(training);
+    setSelectedTrainingId(training.id);
     setInitialModalTab(initialTab);
   };
 
@@ -198,9 +192,28 @@ export default function App() {
     setTrainings(getStoredTrainings());
   };
 
+  const handleQuickUpdateVideo = async (trainingId: string, videoUrl: string, videoTitle?: string) => {
+    const target = trainings.find(t => t.id === trainingId);
+    if (!target) return;
+    const updated: TrainingDocument = {
+      ...target,
+      videoType: 'link',
+      videoUrl: videoUrl.trim(),
+      videoTitle: videoTitle || target.videoTitle || target.title,
+      updatedAt: new Date().toISOString()
+    };
+    await upsertTraining(updated);
+    setTrainings(getStoredTrainings());
+  };
+
   const handleDeleteTraining = async (id: string) => {
     await deleteTraining(id);
     setTrainings(getStoredTrainings());
+  };
+
+  const handleResetTrainings = async () => {
+    const defaults = await resetTrainingsToDefault();
+    setTrainings(defaults);
   };
 
   const handleRecordCompletion = async (completion: TrainingCompletion) => {
@@ -235,6 +248,9 @@ export default function App() {
     } catch {}
   };
 
+  const bilgiIslemCount = trainings.filter(t => t.category === 'bilgi-islem').length;
+  const depocuCount = trainings.filter(t => t.category === 'depocu').length;
+
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans transition-colors selection:bg-red-500 selection:text-white">
       {/* ======================================================== */}
@@ -257,6 +273,9 @@ export default function App() {
             isAdmin={isAdmin}
             setIsAdmin={setIsAdmin}
             onOpenAdminAuth={() => setShowAdminAuthModal(true)}
+            totalCount={trainings.length}
+            bilgiIslemCount={bilgiIslemCount}
+            depocuCount={depocuCount}
           />
 
           {/* Main Content Area */}
@@ -294,7 +313,9 @@ export default function App() {
                 selectedCategory={selectedCategory}
                 setSelectedCategory={setSelectedCategory}
                 onOpenTrainingDetail={handleOpenTrainingDetail}
+                onQuickUpdateVideo={handleQuickUpdateVideo}
                 onOpenAdminNewTraining={(videoSrc) => {
+                  if (videoSrc) setPendingAdminVideoUrl(videoSrc);
                   if (!isAdmin) {
                     setShowAdminAuthModal(true);
                   } else {
@@ -328,6 +349,9 @@ export default function App() {
                   onOpenTrainingDetail={handleOpenTrainingDetail}
                   onClose={() => setTrainingActiveTab('catalog')}
                   onClearCompletions={() => setCompletions([])}
+                  onResetTrainings={handleResetTrainings}
+                  initialVideoUrl={pendingAdminVideoUrl}
+                  onClearInitialVideoUrl={() => setPendingAdminVideoUrl(null)}
                 />
               ) : (
                 <div className="bg-white dark:bg-slate-900 rounded-2xl p-12 text-center border border-slate-200 dark:border-slate-800 shadow-sm max-w-lg mx-auto">
@@ -389,11 +413,12 @@ export default function App() {
             <TrainingDetailModal
               training={selectedTraining}
               initialTab={initialModalTab}
-              onClose={() => setSelectedTraining(null)}
+              onClose={() => setSelectedTrainingId(null)}
               currentBranchId={currentBranchId}
               currentBranchName={currentBranch.name}
               currentPersonnel={currentPersonnel}
               onRecordCompletion={handleRecordCompletion}
+              onUpdateTrainingVideo={handleQuickUpdateVideo}
               isAlreadyCompleted={completions.some(c => c.trainingId === selectedTraining.id && c.branchId === currentBranchId)}
               isAdmin={isAdmin}
             />

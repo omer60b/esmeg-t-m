@@ -1,5 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { TrainingDocument, TrainingCategory } from '../types';
+import { UniversalVideoPlayer, isYouTubeUrl, getYouTubeThumbnailUrl } from '../utils/videoUtils';
 import { 
   Video, 
   Play, 
@@ -7,14 +8,13 @@ import {
   RotateCcw, 
   RotateCw, 
   Upload, 
-  CheckCircle2, 
   Clock, 
   Sparkles, 
-  FileText, 
   ExternalLink,
-  ShieldCheck,
-  Search,
-  BookOpen
+  Plus,
+  Youtube,
+  Link as LinkIcon,
+  CheckCircle2
 } from 'lucide-react';
 
 interface VideoHubViewProps {
@@ -23,6 +23,7 @@ interface VideoHubViewProps {
   setSelectedCategory: (cat: 'all' | TrainingCategory) => void;
   onOpenTrainingDetail: (training: TrainingDocument) => void;
   onOpenAdminNewTraining?: (videoSrc?: string) => void;
+  onQuickUpdateVideo?: (trainingId: string, videoUrl: string, videoTitle?: string) => Promise<void>;
   isAdmin?: boolean;
 }
 
@@ -32,17 +33,30 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
   setSelectedCategory,
   onOpenTrainingDetail,
   onOpenAdminNewTraining,
+  onQuickUpdateVideo,
   isAdmin
 }) => {
-  const videoTrainings = trainings.filter(t => t.videoUrl || t.videoType !== 'none');
+  const videoTrainings = trainings.filter(t => Boolean(t.videoUrl && t.videoUrl.trim() && t.videoType !== 'none'));
 
-  const [activeTraining, setActiveTraining] = useState<TrainingDocument>(
-    videoTrainings[0] || trainings[0]
+  const [activeTrainingId, setActiveTrainingId] = useState<string>(
+    videoTrainings[0]?.id || trainings[0]?.id || ''
   );
+
+  // Always resolve the freshest training object from trainings prop so real-time updates reflect immediately
+  const activeTraining = videoTrainings.find(t => t.id === activeTrainingId) || videoTrainings[0] || trainings[0];
+
+  useEffect(() => {
+    if (activeTraining && activeTraining.id !== activeTrainingId) {
+      setActiveTrainingId(activeTraining.id);
+    }
+  }, [activeTraining, activeTrainingId]);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [customVideoSrc, setCustomVideoSrc] = useState<string | null>(null);
   const [customVideoName, setCustomVideoName] = useState<string | null>(null);
+  const [quickYoutubeUrl, setQuickYoutubeUrl] = useState('');
+  const [quickAssignSuccess, setQuickAssignSuccess] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const filteredVideos = videoTrainings.filter(t => {
@@ -83,13 +97,32 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
     }
   };
 
+  // Handle quick YouTube / video URL assignment by Admin
+  const handleQuickAssignUrl = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = quickYoutubeUrl.trim();
+    if (!trimmed) return;
+
+    if (onQuickUpdateVideo && activeTraining) {
+      await onQuickUpdateVideo(activeTraining.id, trimmed, activeTraining.videoTitle || activeTraining.title);
+      setCustomVideoSrc(null);
+      setCustomVideoName(null);
+      setQuickYoutubeUrl('');
+      setQuickAssignSuccess(`"${activeTraining.title}" eğitimine video linki anlık olarak kaydedildi ve tüm kullanıcılara yayınlandı!`);
+      setTimeout(() => setQuickAssignSuccess(null), 5000);
+    } else if (onOpenAdminNewTraining) {
+      onOpenAdminNewTraining(trimmed);
+    }
+  };
+
   const currentSrc = customVideoSrc || activeTraining?.videoUrl || '';
+  const isCurrentYouTube = isYouTubeUrl(currentSrc);
 
   return (
     <div className="space-y-6">
       
       {/* Video Hub Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-sky-950 to-slate-900 text-white rounded-2xl p-6 sm:p-8 border border-slate-800 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="bg-gradient-to-r from-slate-900 via-sky-950 to-slate-900 text-white rounded-2xl p-6 sm:p-8 border border-slate-800 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/30 text-xs font-semibold mb-2">
             <Video className="w-3.5 h-3.5" /> esmeegitim Multimedya & Video Eğitim Merkezi
@@ -98,23 +131,66 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
             Videolu Operasyon ve Süreç Eğitimleri
           </h2>
           <p className="text-xs sm:text-sm text-slate-300 max-w-2xl mt-1.5 leading-relaxed">
-            Kasa işlemleri, ERP IMEI dökümleri, Volta ve Sunny motosiklet tescil süreçleri için adım adım ekran kayıtları ve pratik uygulama videoları.
+            Kasa işlemleri, ERP IMEI dökümleri, Volta ve Sunny motosiklet tescil süreçleri için adım adım ekran kayıtları, YouTube eğitimleri ve pratik uygulama videoları.
           </p>
         </div>
 
-        {/* Device Video Upload Box for Manager (Strictly Admin Only) */}
+        {/* Admin Quick YouTube Link & Video Management Box */}
         {isAdmin && (
-          <div className="bg-slate-800/80 backdrop-blur border border-slate-700/80 rounded-xl p-4 flex flex-col gap-2 shrink-0 max-w-sm">
-            <div className="flex items-center gap-2 text-sky-400 text-xs font-bold">
-              <Upload className="w-4 h-4" />
-              <span>Yönetici: Video Yükle</span>
+          <div className="bg-slate-800/90 backdrop-blur border border-sky-500/30 rounded-2xl p-4 flex flex-col gap-3 shrink-0 w-full lg:max-w-md shadow-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sky-400 text-xs font-bold">
+                <Youtube className="w-4 h-4 text-red-500" />
+                <span>Yönetici: Anlık YouTube / Video Linki Ata</span>
+              </div>
+              {onOpenAdminNewTraining && (
+                <button
+                  onClick={() => onOpenAdminNewTraining(quickYoutubeUrl.trim() || customVideoSrc || undefined)}
+                  className="text-[11px] bg-red-600 hover:bg-red-500 text-white font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 transition cursor-pointer shadow"
+                >
+                  <Plus className="w-3 h-3" /> Yeni Video Eğitim Aç
+                </button>
+              )}
             </div>
-            <p className="text-[11px] text-slate-400 leading-tight">
-              Telefonunuzdan veya bilgisayarınızdan MP4/WebM video seçerek anında eğitim videosu atayabilirsiniz.
-            </p>
-            <div className="flex items-center gap-2 mt-1">
-              <label className="cursor-pointer flex-1 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold py-2 px-3 rounded-lg text-center transition shadow">
-                <span>Video Dosyası Seç</span>
+
+            <form onSubmit={handleQuickAssignUrl} className="space-y-2">
+              <p className="text-[11px] text-slate-300 leading-tight">
+                Seçili eğitime (<strong>{activeTraining?.title}</strong>) YouTube veya MP4 linki yapıştırıp kaydettiğinizde tüm kullanıcılarda anında görünür:
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <LinkIcon className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={quickYoutubeUrl}
+                    onChange={(e) => setQuickYoutubeUrl(e.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=... veya youtu.be/..."
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 px-3.5 rounded-lg transition shadow shrink-0 cursor-pointer"
+                >
+                  Anlık Yayınla
+                </button>
+              </div>
+            </form>
+
+            {quickAssignSuccess && (
+              <div className="p-2 rounded-lg bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 text-[11px] flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{quickAssignSuccess}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-700/70">
+              <span className="text-[10px] text-slate-400">
+                Veya yerel dosyadan önizleme yapın:
+              </span>
+              <label className="cursor-pointer bg-slate-700 hover:bg-slate-600 text-slate-200 text-[11px] font-bold py-1 px-2.5 rounded-lg transition flex items-center gap-1">
+                <Upload className="w-3 h-3 text-sky-400" />
+                <span>Cihazdan MP4 Seç</span>
                 <input
                   type="file"
                   accept="video/*"
@@ -122,19 +198,10 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
                   className="hidden"
                 />
               </label>
-              {customVideoSrc && onOpenAdminNewTraining && (
-                <button
-                  onClick={() => onOpenAdminNewTraining(customVideoSrc)}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 px-3 rounded-lg transition"
-                  title="Yeni Eğitim Olarak Kaydet"
-                >
-                  Eğitime Ekle
-                </button>
-              )}
             </div>
             {customVideoName && (
-              <span className="text-[10px] text-emerald-400 truncate block">
-                ✓ Yüklendi: {customVideoName}
+              <span className="text-[10px] text-amber-300 truncate block">
+                ⚠ Cihaz önizlemesi: {customVideoName} (Tüm şubelerde görünmesi için YouTube/Web linki kullanınız)
               </span>
             )}
           </div>
@@ -147,103 +214,112 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
         {/* Left: Interactive Video Player */}
         <div className="lg:col-span-8 bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-2xl p-4 sm:p-6 text-white space-y-4">
           
-          <div className="flex items-center justify-between">
-            <div>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block mb-1 ${
-                activeTraining.category === 'bilgi-islem'
-                  ? 'bg-blue-900/60 text-blue-300 border border-blue-700/50'
-                  : 'bg-emerald-900/60 text-emerald-300 border border-emerald-700/50'
-              }`}>
-                {activeTraining.category === 'bilgi-islem' ? 'BİLGİ İŞLEM VİDEOSU' : 'DEPOCU VİDEOSU'}
-              </span>
-              <h3 className="text-base sm:text-lg font-bold">
-                {customVideoName ? `Cihazdan: ${customVideoName}` : activeTraining.videoTitle || activeTraining.title}
-              </h3>
-            </div>
+          {activeTraining ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block ${
+                      activeTraining.category === 'bilgi-islem'
+                        ? 'bg-blue-900/60 text-blue-300 border border-blue-700/50'
+                        : 'bg-emerald-900/60 text-emerald-300 border border-emerald-700/50'
+                    }`}>
+                      {activeTraining.category === 'bilgi-islem' ? 'BİLGİ İŞLEM VİDEOSU' : 'DEPOCU VİDEOSU'}
+                    </span>
+                    {isCurrentYouTube && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-600/20 text-red-400 border border-red-500/30 inline-flex items-center gap-1">
+                        <Youtube className="w-3 h-3" /> YouTube Yayını
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-base sm:text-lg font-bold">
+                    {customVideoName ? `Cihazdan: ${customVideoName}` : activeTraining.videoTitle || activeTraining.title}
+                  </h3>
+                </div>
 
-            <button
-              onClick={() => onOpenTrainingDetail(activeTraining)}
-              className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1 font-semibold"
-            >
-              <span>Eğitim Metnini Oku</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* HTML5 Player */}
-          <div className="relative rounded-xl overflow-hidden bg-black aspect-video flex items-center justify-center border border-slate-800">
-            {currentSrc ? (
-              <video
-                ref={videoRef}
-                src={currentSrc}
-                controls
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
-                className="w-full h-full object-contain"
-              />
-            ) : (
-              <div className="text-center p-8 text-slate-500">
-                <Video className="w-12 h-12 mx-auto mb-2 opacity-40" />
-                <p className="text-sm">Video kaynağı bulunamadı.</p>
-              </div>
-            )}
-          </div>
-
-          {/* Controls Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={togglePlay}
-                className="px-3.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center gap-1.5 shadow"
-              >
-                {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                {isPlaying ? 'Durdur' : 'Oynat'}
-              </button>
-              <button
-                onClick={() => skipTime(-10)}
-                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium"
-              >
-                <RotateCcw className="w-3.5 h-3.5 inline mr-1" /> 10s Geri
-              </button>
-              <button
-                onClick={() => skipTime(10)}
-                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium"
-              >
-                10s İleri <RotateCw className="w-3.5 h-3.5 inline ml-1" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
-              <span className="text-[11px] text-slate-400 px-1">Oynatma Hızı:</span>
-              {[0.75, 1, 1.25, 1.5, 2].map(rate => (
                 <button
-                  key={rate}
-                  onClick={() => changeRate(rate)}
-                  className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                    playbackRate === rate ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-white'
-                  }`}
+                  onClick={() => onOpenTrainingDetail(activeTraining)}
+                  className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1 font-semibold cursor-pointer"
                 >
-                  {rate}x
+                  <span>Eğitim Metnini & Sınavı Aç</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
                 </button>
-              ))}
-            </div>
-          </div>
+              </div>
 
-          {/* Video Description & Highlights */}
-          <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2 text-xs text-slate-300">
-            <h4 className="font-bold text-white flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              Eğitim Özeti ve Dikkat Edilecekler
-            </h4>
-            <p className="leading-relaxed">
-              {activeTraining.summary}
-            </p>
-            <div className="flex items-center gap-4 text-[11px] text-slate-400 pt-2 border-t border-slate-800">
-              <span>Süre: {activeTraining.videoDuration || '05:00'}</span>
-              <span>Doküman: {activeTraining.docNo}</span>
-              <span>Birim: {activeTraining.targetUnit}</span>
+              {/* Universal Player (Supports YouTube, Vimeo, Google Drive, Direct MP4) */}
+              <div className="relative rounded-xl overflow-hidden bg-black aspect-video flex items-center justify-center border border-slate-800">
+                <UniversalVideoPlayer
+                  src={currentSrc}
+                  title={activeTraining.videoTitle || activeTraining.title}
+                  videoRef={videoRef}
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
+                />
+              </div>
+
+              {/* Controls Bar (Shown for direct HTML5 videos; YouTube has built-in player controls) */}
+              {!isCurrentYouTube && currentSrc && (
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={togglePlay}
+                      className="px-3.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center gap-1.5 shadow cursor-pointer"
+                    >
+                      {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                      {isPlaying ? 'Durdur' : 'Oynat'}
+                    </button>
+                    <button
+                      onClick={() => skipTime(-10)}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 inline mr-1" /> 10s Geri
+                    </button>
+                    <button
+                      onClick={() => skipTime(10)}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium cursor-pointer"
+                    >
+                      10s İleri <RotateCw className="w-3.5 h-3.5 inline ml-1" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-400 px-1">Oynatma Hızı:</span>
+                    {[0.75, 1, 1.25, 1.5, 2].map(rate => (
+                      <button
+                        key={rate}
+                        onClick={() => changeRate(rate)}
+                        className={`px-2 py-0.5 rounded text-[11px] font-bold cursor-pointer ${
+                          playbackRate === rate ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {rate}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Video Description & Highlights */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2 text-xs text-slate-300">
+                <h4 className="font-bold text-white flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  Eğitim Özeti ve Dikkat Edilecekler
+                </h4>
+                <p className="leading-relaxed">
+                  {activeTraining.summary}
+                </p>
+                <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-400 pt-2 border-t border-slate-800">
+                  <span>Süre: {activeTraining.videoDuration || '05:00'}</span>
+                  <span>Doküman: {activeTraining.docNo}</span>
+                  <span>Birim: {activeTraining.targetUnit}</span>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="text-center p-12 text-slate-400">
+              Henüz video tanımlı bir eğitim bulunmamaktadır.
             </div>
-          </div>
+          )}
 
         </div>
 
@@ -260,19 +336,19 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
             <div className="flex items-center gap-1 text-[10px]">
               <button
                 onClick={() => setSelectedCategory('all')}
-                className={`px-2 py-0.5 rounded font-bold ${selectedCategory === 'all' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}
+                className={`px-2 py-0.5 rounded font-bold cursor-pointer ${selectedCategory === 'all' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}
               >
                 Tümü
               </button>
               <button
                 onClick={() => setSelectedCategory('bilgi-islem')}
-                className={`px-2 py-0.5 rounded font-bold ${selectedCategory === 'bilgi-islem' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}
+                className={`px-2 py-0.5 rounded font-bold cursor-pointer ${selectedCategory === 'bilgi-islem' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}
               >
                 Bİ
               </button>
               <button
                 onClick={() => setSelectedCategory('depocu')}
-                className={`px-2 py-0.5 rounded font-bold ${selectedCategory === 'depocu' ? 'bg-emerald-600 text-white' : 'text-slate-500'}`}
+                className={`px-2 py-0.5 rounded font-bold cursor-pointer ${selectedCategory === 'depocu' ? 'bg-emerald-600 text-white' : 'text-slate-500'}`}
               >
                 Depo
               </button>
@@ -282,14 +358,15 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
           {/* Playlist Cards */}
           <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
             {filteredVideos.map((t) => {
-              const isActive = activeTraining.id === t.id && !customVideoSrc;
+              const isActive = activeTraining?.id === t.id && !customVideoSrc;
               const isBI = t.category === 'bilgi-islem';
+              const ytThumb = getYouTubeThumbnailUrl(t.videoUrl);
 
               return (
                 <div
                   key={t.id}
                   onClick={() => {
-                    setActiveTraining(t);
+                    setActiveTrainingId(t.id);
                     setCustomVideoSrc(null);
                     setCustomVideoName(null);
                     setIsPlaying(false);
@@ -300,13 +377,22 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
                       : 'border-slate-100 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/50'
                   }`}
                 >
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                    isActive 
-                      ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30' 
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                  }`}>
-                    <Play className="w-4 h-4 ml-0.5 fill-current" />
-                  </div>
+                  {ytThumb ? (
+                    <div className="relative w-16 h-11 rounded-lg overflow-hidden shrink-0 bg-slate-900 border border-slate-700 flex items-center justify-center">
+                      <img src={ytThumb} alt={t.title} className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                        <Play className="w-4 h-4 text-white fill-current" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                      isActive 
+                        ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30' 
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                    }`}>
+                      <Play className="w-4 h-4 ml-0.5 fill-current" />
+                    </div>
+                  )}
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1 mb-0.5">
@@ -319,11 +405,11 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
                     </div>
 
                     <h5 className={`text-xs font-bold truncate ${isActive ? 'text-sky-900 dark:text-sky-200' : 'text-slate-800 dark:text-slate-200'}`}>
-                      {t.title}
+                      {t.videoTitle || t.title}
                     </h5>
 
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5">
-                      {t.subTitle}
+                      {t.title}
                     </p>
                   </div>
                 </div>

@@ -32,6 +32,9 @@ interface TrainingHeaderProps {
   isAdmin: boolean;
   setIsAdmin: (val: boolean) => void;
   onOpenAdminAuth: () => void;
+  totalCount?: number;
+  bilgiIslemCount?: number;
+  depocuCount?: number;
 }
 
 export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
@@ -47,7 +50,10 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
   setCurrentPersonnel,
   isAdmin,
   setIsAdmin,
-  onOpenAdminAuth
+  onOpenAdminAuth,
+  totalCount = 11,
+  bilgiIslemCount = 7,
+  depocuCount = 4
 }) => {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const currentBranch = officialEsmeBranches.find(b => b.id === currentBranchId) || officialEsmeBranches[0];
@@ -301,7 +307,7 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
               }`}
             >
-              Tüm Eğitimler (11)
+              Tüm Eğitimler ({totalCount})
             </button>
 
             {/* Bilgi İşlem Eğitim */}
@@ -314,7 +320,7 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
               }`}
             >
               <span className="w-2 h-2 rounded-full bg-blue-400 inline-block animate-pulse"></span>
-              Bilgi İşlem Eğitim (7 Talimat)
+              Bilgi İşlem Eğitim ({bilgiIslemCount} Talimat)
             </button>
 
             {/* Depocu Eğitim */}
@@ -327,7 +333,7 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
               }`}
             >
               <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
-              Depocu Eğitim (4 Kılavuz)
+              Depocu Eğitim ({depocuCount} Kılavuz)
             </button>
           </div>
 

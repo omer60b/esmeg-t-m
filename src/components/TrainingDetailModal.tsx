@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   TrainingDocument, 
   TrainingCompletion,
@@ -6,6 +6,7 @@ import {
 } from '../types';
 import { SlidePresentationViewer } from './SlidePresentationViewer';
 import { DepocuOriginalPdfView } from './DepocuOriginalPdfView';
+import { UniversalVideoPlayer, isYouTubeUrl } from '../utils/videoUtils';
 import { 
   X, 
   BookOpen, 
@@ -37,7 +38,9 @@ import {
   QrCode,
   ShieldCheck,
   Calendar,
-  UserCheck
+  UserCheck,
+  Youtube,
+  Link as LinkIcon
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -50,6 +53,7 @@ interface TrainingDetailModalProps {
   currentBranchName: string;
   currentPersonnel: string;
   onRecordCompletion: (completion: TrainingCompletion) => void;
+  onUpdateTrainingVideo?: (trainingId: string, videoUrl: string, videoTitle?: string) => Promise<void>;
   isAlreadyCompleted?: boolean;
   isAdmin?: boolean;
 }
@@ -62,6 +66,7 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
   currentBranchName,
   currentPersonnel,
   onRecordCompletion,
+  onUpdateTrainingVideo,
   isAlreadyCompleted = false,
   isAdmin = false
 }) => {
@@ -87,6 +92,16 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
   const [playbackRate, setPlaybackRate] = useState(1);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [uploadedVideoName, setUploadedVideoName] = useState<string | null>(null);
+  const [adminVideoUrlInput, setAdminVideoUrlInput] = useState<string>(training.videoUrl || '');
+  const [videoSaveMessage, setVideoSaveMessage] = useState<string | null>(null);
+
+  // Keep videoSrc synced in real-time when training.videoUrl updates from Firestore
+  useEffect(() => {
+    if (!uploadedVideoName) {
+      setVideoSrc(training.videoUrl || '');
+      setAdminVideoUrlInput(training.videoUrl || '');
+    }
+  }, [training.videoUrl, uploadedVideoName]);
 
   // Copy state
   const [copiedTemplate, setCopiedTemplate] = useState(false);
@@ -132,6 +147,21 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
       setVideoSrc(url);
       setUploadedVideoName(file.name);
       setIsPlaying(false);
+    }
+  };
+
+  // Handle Admin saving YouTube / Web URL directly to this training
+  const handleSaveAdminVideoUrl = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAdmin) return;
+    const trimmed = adminVideoUrlInput.trim();
+    if (!trimmed) return;
+    setUploadedVideoName(null);
+    setVideoSrc(trimmed);
+    if (onUpdateTrainingVideo) {
+      await onUpdateTrainingVideo(training.id, trimmed, training.videoTitle || training.title);
+      setVideoSaveMessage('Video linki kaydedildi ve tüm şube kullanıcılarına anında yayınlandı!');
+      setTimeout(() => setVideoSaveMessage(null), 4000);
     }
   };
 
@@ -604,17 +634,24 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
             </div>
           )}
 
-          {/* TAB 2: VIDEO TRAINING & PLAYER (ADMIN ONLY UPLOAD) */}
+          {/* TAB 2: VIDEO TRAINING & PLAYER (ADMIN ONLY UPLOAD & YOUTUBE LINK SYNC) */}
           {activeTab === 'video' && (
             <div className="space-y-6">
               
               <div className="bg-slate-950 rounded-2xl p-4 sm:p-6 border border-slate-800 shadow-xl text-white">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                   <div>
-                    <h3 className="font-extrabold text-base text-white flex items-center gap-2">
-                      <Video className="w-4 h-4 text-sky-400" />
-                      {training.videoTitle || `${training.title} Video Eğitimi`}
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-extrabold text-base text-white flex items-center gap-2">
+                        <Video className="w-4 h-4 text-sky-400" />
+                        {training.videoTitle || `${training.title} Video Eğitimi`}
+                      </h3>
+                      {isYouTubeUrl(videoSrc) && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-600/20 text-red-400 border border-red-500/30 inline-flex items-center gap-1">
+                          <Youtube className="w-3 h-3" /> YouTube
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-slate-400 mt-0.5">
                       {uploadedVideoName ? `Yüklenen Video: ${uploadedVideoName}` : 'Standart Operasyon ve Uygulama Kaydı'}
                     </p>
@@ -622,9 +659,9 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
 
                   {/* Device Video Upload Button - STRICTLY FOR ADMINS */}
                   {isAdmin ? (
-                    <label className="cursor-pointer bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow transition">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Yönetici: Video Seç</span>
+                    <label className="cursor-pointer bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow transition">
+                      <Upload className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Cihazdan Önizle</span>
                       <input
                         type="file"
                         accept="video/*"
@@ -639,30 +676,59 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
                   )}
                 </div>
 
-                {/* HTML5 Video Player */}
-                <div className="relative rounded-xl overflow-hidden bg-black aspect-video max-h-[460px] flex items-center justify-center border border-slate-800">
-                  {videoSrc ? (
-                    <video
-                      ref={videoRef}
-                      src={videoSrc}
-                      controls
-                      onPlay={() => setIsPlaying(true)}
-                      onPause={() => setIsPlaying(false)}
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    <div className="text-center p-8 text-slate-500">
-                      <Video className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm font-semibold text-slate-300">Bu eğitim için henüz video atanmamış.</p>
-                      <p className="text-xs mt-1 text-slate-400">
-                        {isAdmin ? 'Yukarıdaki butona tıklayarak video yükleyebilirsiniz.' : 'Yönetici tarafından video yüklendiğinde burada gösterilecektir.'}
-                      </p>
+                {/* Admin Direct YouTube / Video Link Bar */}
+                {isAdmin && (
+                  <form onSubmit={handleSaveAdminVideoUrl} className="mb-4 p-3 rounded-xl bg-slate-900/90 border border-sky-500/30 space-y-2">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-sky-400 flex items-center gap-1.5">
+                        <Youtube className="w-3.5 h-3.5 text-red-500" />
+                        Yönetici: YouTube veya Video Linkini Tüm Şubelere Anlık Yayınla
+                      </span>
                     </div>
-                  )}
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="relative flex-1">
+                        <LinkIcon className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={adminVideoUrlInput}
+                          onChange={(e) => setAdminVideoUrlInput(e.target.value)}
+                          placeholder="https://www.youtube.com/watch?v=... veya MP4 video linki"
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow cursor-pointer shrink-0"
+                      >
+                        Kaydet & Anlık Yayınla
+                      </button>
+                    </div>
+                    {videoSaveMessage && (
+                      <p className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> {videoSaveMessage}
+                      </p>
+                    )}
+                  </form>
+                )}
+
+                {/* Universal Video Player (YouTube, Vimeo, Drive, HTML5 MP4) */}
+                <div className="relative rounded-xl overflow-hidden bg-black aspect-video max-h-[460px] flex items-center justify-center border border-slate-800">
+                  <UniversalVideoPlayer
+                    src={videoSrc}
+                    title={training.videoTitle || training.title}
+                    videoRef={videoRef}
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
+                    emptyMessage={
+                      isAdmin
+                        ? 'Yukarıdaki alana YouTube veya video linki yapıştırarak tüm kullanıcılara yayınlayabilirsiniz.'
+                        : 'Yönetici tarafından video eklendiğinde burada anlık gösterilecektir.'
+                    }
+                  />
                 </div>
 
-                {/* Quick Video Controls Bar */}
-                {videoSrc && (
+                {/* Quick Video Controls Bar (Only for HTML5 direct video) */}
+                {videoSrc && !isYouTubeUrl(videoSrc) && (
                   <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-3 border-t border-slate-800 text-xs">
                     <div className="flex items-center gap-2">
                       <button
