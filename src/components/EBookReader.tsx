@@ -23,19 +23,29 @@ interface EBookReaderProps {
   trainings: TrainingDocument[];
   initialTrainingId?: string;
   onOpenTrainingDetail: (training: TrainingDocument) => void;
+  appTheme?: 'sepia' | 'light' | 'dark';
+  setAppTheme?: (theme: 'sepia' | 'light' | 'dark') => void;
 }
 
 export const EBookReader: React.FC<EBookReaderProps> = ({
   trainings,
   initialTrainingId,
-  onOpenTrainingDetail
+  onOpenTrainingDetail,
+  appTheme,
+  setAppTheme
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<'all' | TrainingCategory>('all');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
-  const [readingTheme, setReadingTheme] = useState<'light' | 'dark' | 'sepia'>('sepia');
+  const [localTheme, setLocalTheme] = useState<'light' | 'dark' | 'sepia'>('light');
   const [fontSize, setFontSize] = useState<'normal' | 'large' | 'xlarge'>('normal');
   const [showPdfSidebar, setShowPdfSidebar] = useState(false);
+
+  const readingTheme = appTheme || localTheme;
+  const handleSelectTheme = (theme: 'sepia' | 'light' | 'dark') => {
+    setLocalTheme(theme);
+    if (setAppTheme) setAppTheme(theme);
+  };
 
   // Active category filtered books
   const visibleBooks = trainings.filter(t => selectedCategory === 'all' || t.category === selectedCategory);
@@ -174,21 +184,21 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
           <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
             <button
               onClick={() => setFontSize('normal')}
-              className={`px-2 py-1 rounded text-[11px] font-bold ${fontSize === 'normal' ? 'bg-white dark:bg-slate-700 shadow-sm' : 'text-slate-500'}`}
+              className={`px-2 py-1 rounded text-[11px] font-bold cursor-pointer ${fontSize === 'normal' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-600 dark:text-slate-400'}`}
               title="Normal Yazı"
             >
               A
             </button>
             <button
               onClick={() => setFontSize('large')}
-              className={`px-2 py-1 rounded text-xs font-bold ${fontSize === 'large' ? 'bg-white dark:bg-slate-700 shadow-sm' : 'text-slate-500'}`}
+              className={`px-2 py-1 rounded text-xs font-bold cursor-pointer ${fontSize === 'large' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-600 dark:text-slate-400'}`}
               title="Büyük Yazı"
             >
               A+
             </button>
             <button
               onClick={() => setFontSize('xlarge')}
-              className={`px-2 py-1 rounded text-sm font-bold ${fontSize === 'xlarge' ? 'bg-white dark:bg-slate-700 shadow-sm' : 'text-slate-500'}`}
+              className={`px-2 py-1 rounded text-sm font-bold cursor-pointer ${fontSize === 'xlarge' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-600 dark:text-slate-400'}`}
               title="Çok Büyük Yazı"
             >
               A++
@@ -196,22 +206,34 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
           </div>
 
           {/* Theme Selector */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-300 dark:border-slate-700 text-xs">
             <button
-              onClick={() => setReadingTheme('sepia')}
-              className={`px-2.5 py-1 rounded text-[11px] font-bold transition ${readingTheme === 'sepia' ? 'bg-[#fbf0d9] text-[#433422] shadow-sm' : 'text-slate-500'}`}
+              onClick={() => handleSelectTheme('sepia')}
+              className={`px-2.5 py-1 rounded text-[11px] font-extrabold transition cursor-pointer ${
+                readingTheme === 'sepia'
+                  ? 'bg-[#e8d5b5] text-[#2b1d0f] shadow-sm ring-1 ring-[#c8ad7f]'
+                  : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
+              }`}
             >
               Kitap Kağıdı
             </button>
             <button
-              onClick={() => setReadingTheme('light')}
-              className={`px-2.5 py-1 rounded text-[11px] font-bold transition ${readingTheme === 'light' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+              onClick={() => handleSelectTheme('light')}
+              className={`px-2.5 py-1 rounded text-[11px] font-extrabold transition cursor-pointer ${
+                readingTheme === 'light'
+                  ? 'bg-white text-slate-950 shadow-sm ring-1 ring-slate-300'
+                  : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
+              }`}
             >
               Açık
             </button>
             <button
-              onClick={() => setReadingTheme('dark')}
-              className={`px-2.5 py-1 rounded text-[11px] font-bold transition ${readingTheme === 'dark' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500'}`}
+              onClick={() => handleSelectTheme('dark')}
+              className={`px-2.5 py-1 rounded text-[11px] font-extrabold transition cursor-pointer ${
+                readingTheme === 'dark'
+                  ? 'bg-slate-900 text-white shadow-sm ring-1 ring-slate-700'
+                  : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
+              }`}
             >
               Koyu
             </button>
@@ -319,20 +341,47 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
         </div>
 
         {/* Right: The Book Page View */}
-        <div className={`lg:col-span-8 rounded-2xl border p-6 sm:p-10 shadow-lg space-y-6 transition-colors duration-200 ${themeStyles[readingTheme]}`}>
-          
+        <div
+          className={`lg:col-span-8 rounded-2xl border p-6 sm:p-10 shadow-lg space-y-6 transition-colors duration-200 ${
+            readingTheme === 'light'
+              ? 'bg-white text-slate-950 border-slate-300'
+              : readingTheme === 'sepia'
+              ? 'bg-[#fbf0d9] text-[#2b1d0f] border-[#dec49a]'
+              : 'bg-slate-900 text-slate-100 border-slate-800'
+          }`}
+        >
           {/* Book Page Header */}
-          <div className="border-b pb-4 flex items-center justify-between gap-4 border-current/20">
+          <div
+            className={`border-b pb-4 flex items-center justify-between gap-4 ${
+              readingTheme === 'dark' ? 'border-slate-800' : 'border-slate-300'
+            }`}
+          >
             <div>
-              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full inline-block mb-1.5 ${
-                isBilgiIslem ? 'bg-blue-600/10 text-blue-700 dark:text-blue-300' : 'bg-emerald-600/10 text-emerald-700 dark:text-emerald-300'
-              }`}>
+              <span
+                className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full inline-block mb-1.5 ${
+                  isBilgiIslem
+                    ? readingTheme === 'dark'
+                      ? 'bg-blue-950 text-blue-300 border border-blue-800'
+                      : 'bg-blue-100 text-blue-900 border border-blue-300'
+                    : readingTheme === 'dark'
+                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                    : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                }`}
+              >
                 {isBilgiIslem ? 'BİLGİ İŞLEM KURUMSAL TALİMAT' : 'DEPOCU STANDART OPERASYON KILAVUZU'}
               </span>
               <h1 className="text-xl sm:text-2xl font-black tracking-tight">
                 {currentBook.title}
               </h1>
-              <p className="text-xs opacity-75 mt-0.5">
+              <p
+                className={`text-xs font-semibold mt-0.5 ${
+                  readingTheme === 'dark'
+                    ? 'text-slate-300'
+                    : readingTheme === 'sepia'
+                    ? 'text-[#5c4328]'
+                    : 'text-slate-700'
+                }`}
+              >
                 {currentBook.subTitle} • {currentBook.docNo}
               </p>
             </div>
@@ -341,7 +390,11 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
               <a
                 href={currentBook.pdfPath}
                 download
-                className="px-3 py-1.5 rounded-lg bg-current/10 hover:bg-current/20 text-xs font-bold flex items-center gap-1.5 transition"
+                className={`px-3 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition border ${
+                  readingTheme === 'dark'
+                    ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-900 border-slate-300'
+                }`}
                 title="Orijinal PDF'i İndir"
               >
                 <Download className="w-3.5 h-3.5" /> PDF
@@ -351,11 +404,23 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
 
           {/* Side-by-side or Embedded PDF viewer */}
           {showPdfSidebar && (
-            <div className="rounded-2xl border border-current/20 p-4 mb-6 bg-current/5 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-current/15">
+            <div
+              className={`rounded-2xl border p-4 mb-6 space-y-4 ${
+                readingTheme === 'dark'
+                  ? 'bg-slate-950/60 border-slate-800'
+                  : readingTheme === 'sepia'
+                  ? 'bg-[#f4e4c3] border-[#d5b887]'
+                  : 'bg-slate-50 border-slate-300'
+              }`}
+            >
+              <div
+                className={`flex flex-wrap items-center justify-between gap-2 pb-3 border-b ${
+                  readingTheme === 'dark' ? 'border-slate-800' : 'border-slate-300'
+                }`}
+              >
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4 text-red-600" />
-                  <span className="text-xs font-bold">Orijinal Resmi Yönerge PDF Belgesi</span>
+                  <span className="text-xs font-extrabold">Orijinal Resmi Yönerge PDF Belgesi</span>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -372,7 +437,11 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
                         href={currentBook.pdfPath}
                         target="_blank"
                         rel="noreferrer"
-                        className="px-3 py-1.5 rounded-lg bg-current/10 hover:bg-current/20 text-xs font-bold flex items-center gap-1.5 transition"
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition border ${
+                          readingTheme === 'dark'
+                            ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
+                            : 'bg-white hover:bg-slate-100 text-slate-900 border-slate-300'
+                        }`}
                       >
                         <ExternalLink className="w-3.5 h-3.5" /> Yeni Sekmede Aç
                       </a>
@@ -380,26 +449,31 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
                   )}
                   <button
                     onClick={() => window.print()}
-                    className="px-3 py-1.5 rounded-lg bg-current/10 hover:bg-current/20 text-xs font-bold flex items-center gap-1.5 transition"
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition border cursor-pointer ${
+                      readingTheme === 'dark'
+                        ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
+                        : 'bg-white hover:bg-slate-100 text-slate-900 border-slate-300'
+                    }`}
                   >
                     <span>🖨 Yazdır</span>
                   </button>
                 </div>
               </div>
 
-              {/* High-visibility Object & A4 Preview */}
               {currentBook.pdfPath ? (
-                <div className="h-[520px] rounded-xl overflow-hidden border border-current/20 bg-slate-950">
+                <div className="h-[520px] rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700 bg-slate-950">
                   <object
                     data={currentBook.pdfPath}
                     type="application/pdf"
                     className="w-full h-full"
                   >
                     <embed src={currentBook.pdfPath} type="application/pdf" className="w-full h-full" />
-                    <div className="p-8 text-center text-slate-300 flex flex-col items-center justify-center h-full">
+                    <div className="p-8 text-center text-slate-200 flex flex-col items-center justify-center h-full">
                       <FileText className="w-10 h-10 text-red-500 mb-2" />
                       <p className="font-bold text-xs">Tarayıcı PDF eklentisi iframe içinde engellendi.</p>
-                      <p className="text-[11px] text-slate-400 mt-1">Belge içeriği aşağıda metin ve madde olarak eksiksiz listelenmiştir. Orijinal PDF dosyasını yukarıdaki butondan indirebilirsiniz.</p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Belge içeriği aşağıda metin ve madde olarak eksiksiz listelenmiştir. Orijinal PDF dosyasını yukarıdaki butondan indirebilirsiniz.
+                      </p>
                       <a
                         href={currentBook.pdfPath}
                         download
@@ -411,7 +485,7 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
                   </object>
                 </div>
               ) : (
-                <div className="p-8 text-center opacity-60 text-xs">
+                <div className="p-8 text-center text-xs font-semibold">
                   Bu doküman için harici PDF atanmamıştır. Aşağıdaki metin resmi yönergenin kendisidir.
                 </div>
               )}
@@ -419,21 +493,53 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
           )}
 
           {/* Book Summary Card */}
-          <div className="p-4 rounded-xl border border-current/20 bg-current/5">
+          <div
+            className={`p-4 rounded-xl border ${
+              readingTheme === 'dark'
+                ? 'bg-slate-800/70 border-slate-700 text-slate-100'
+                : readingTheme === 'sepia'
+                ? 'bg-[#f4e4c3] border-[#d5b887] text-[#2b1d0f]'
+                : 'bg-slate-50 border-slate-300 text-slate-950'
+            }`}
+          >
             <h4 className="text-xs font-extrabold uppercase tracking-wider mb-1">
               Genelge Özeti ve Kapsamı
             </h4>
-            <p className="text-xs opacity-90 leading-relaxed">
+            <p className="text-xs font-medium leading-relaxed">
               {currentBook.summary}
             </p>
-            <div className="grid grid-cols-2 gap-2 mt-3 pt-2 border-t border-current/15 text-[11px]">
+            <div
+              className={`grid grid-cols-2 gap-2 mt-3 pt-2 border-t text-[11px] ${
+                readingTheme === 'dark' ? 'border-slate-700' : 'border-slate-300'
+              }`}
+            >
               <div>
-                <span className="opacity-60 block">Hedef Kitle / Kapsam:</span>
-                <span className="font-bold">{currentBook.scope}</span>
+                <span
+                  className={`block font-semibold ${
+                    readingTheme === 'dark'
+                      ? 'text-slate-400'
+                      : readingTheme === 'sepia'
+                      ? 'text-[#5c4328]'
+                      : 'text-slate-600'
+                  }`}
+                >
+                  Hedef Kitle / Kapsam:
+                </span>
+                <span className="font-extrabold">{currentBook.scope}</span>
               </div>
               <div>
-                <span className="opacity-60 block">Yetkili Birim:</span>
-                <span className="font-bold">{currentBook.targetUnit}</span>
+                <span
+                  className={`block font-semibold ${
+                    readingTheme === 'dark'
+                      ? 'text-slate-400'
+                      : readingTheme === 'sepia'
+                      ? 'text-[#5c4328]'
+                      : 'text-slate-600'
+                  }`}
+                >
+                  Yetkili Birim:
+                </span>
+                <span className="font-extrabold">{currentBook.targetUnit}</span>
               </div>
             </div>
           </div>
@@ -442,17 +548,29 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
           <div className={`space-y-6 ${fontStyles[fontSize]}`}>
             {currentBook.chapters.map((chap, cIdx) => (
               <section key={chap.id} className="space-y-3 pt-2">
-                <h3 className="text-base sm:text-lg font-bold border-b border-current/20 pb-1.5 flex items-center gap-2">
-                  <span className="opacity-50">§ {cIdx + 1}</span>
+                <h3
+                  className={`text-base sm:text-lg font-extrabold border-b pb-1.5 flex items-center gap-2 ${
+                    readingTheme === 'dark' ? 'border-slate-800' : 'border-slate-300'
+                  }`}
+                >
+                  <span className="text-red-600 font-black">§ {cIdx + 1}</span>
                   <span>{chap.title}</span>
                 </h3>
 
                 {chap.highlights && chap.highlights.length > 0 && (
-                  <div className="bg-current/5 p-3 rounded-lg border-l-4 border-current">
-                    <p className="text-xs font-bold uppercase tracking-wider mb-1 opacity-70">
+                  <div
+                    className={`p-3.5 rounded-lg border-l-4 ${
+                      readingTheme === 'dark'
+                        ? 'bg-slate-800/80 border-amber-500 text-slate-100'
+                        : readingTheme === 'sepia'
+                        ? 'bg-[#f4e4c3] border-[#b45309] text-[#2b1d0f]'
+                        : 'bg-blue-50/90 border-blue-600 text-slate-950'
+                    }`}
+                  >
+                    <p className="text-xs font-extrabold uppercase tracking-wider mb-1">
                       Önemli Şartlar:
                     </p>
-                    <ul className="text-xs space-y-1 list-disc list-inside">
+                    <ul className="text-xs space-y-1 list-disc list-inside font-medium">
                       {chap.highlights.map((h, i) => (
                         <li key={i}>{h}</li>
                       ))}
@@ -460,12 +578,18 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
                   </div>
                 )}
 
-                <div className="whitespace-pre-line leading-relaxed">
+                <div className="whitespace-pre-line leading-relaxed font-medium">
                   {chap.content}
                 </div>
 
                 {chap.criticalNotes && (
-                  <div className="bg-red-500/10 border-l-4 border-red-600 p-3 rounded-r-lg text-xs font-medium space-y-1">
+                  <div
+                    className={`border-l-4 border-red-600 p-3.5 rounded-r-lg text-xs font-bold space-y-1 ${
+                      readingTheme === 'dark'
+                        ? 'bg-rose-950/50 text-rose-200'
+                        : 'bg-rose-50 text-rose-950'
+                    }`}
+                  >
                     {chap.criticalNotes.map((cn, i) => (
                       <p key={i}>⚠ {cn}</p>
                     ))}
@@ -476,28 +600,39 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
           </div>
 
           {/* Book Page Footer & Navigation */}
-          <div className="pt-6 border-t border-current/20 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div
+            className={`pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-4 ${
+              readingTheme === 'dark' ? 'border-slate-800' : 'border-slate-300'
+            }`}
+          >
             <button
               disabled={currentIndex === 0}
               onClick={() => setCurrentIndex(p => Math.max(0, p - 1))}
-              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-current/10 hover:bg-current/20 disabled:opacity-30 disabled:cursor-not-allowed text-xs font-bold flex items-center justify-center gap-1.5 transition"
+              className={`w-full sm:w-auto px-4 py-2 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed text-xs font-extrabold flex items-center justify-center gap-1.5 transition border cursor-pointer ${
+                readingTheme === 'dark'
+                  ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-950 border-slate-300'
+              }`}
             >
               <ChevronLeft className="w-4 h-4" /> Önceki Doküman
             </button>
 
-            <span className="text-xs font-mono font-bold opacity-70">
+            <span className="text-xs font-mono font-extrabold">
               Doküman {currentIndex + 1} / {visibleBooks.length}
             </span>
 
             <button
               disabled={currentIndex === visibleBooks.length - 1}
               onClick={() => setCurrentIndex(p => Math.min(visibleBooks.length - 1, p + 1))}
-              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-current/10 hover:bg-current/20 disabled:opacity-30 disabled:cursor-not-allowed text-xs font-bold flex items-center justify-center gap-1.5 transition"
+              className={`w-full sm:w-auto px-4 py-2 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed text-xs font-extrabold flex items-center justify-center gap-1.5 transition border cursor-pointer ${
+                readingTheme === 'dark'
+                  ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-950 border-slate-300'
+              }`}
             >
               Sonraki Doküman <ChevronRight className="w-4 h-4" />
             </button>
           </div>
-
         </div>
 
       </div>

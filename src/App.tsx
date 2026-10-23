@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   TrainingDocument, 
   TrainingCategory, 
@@ -23,8 +23,9 @@ import { purgeLegacyStockData } from './services/firebaseService';
 import { officialEsmeBranches } from './mockData';
 
 // Training Components
-import { TrainingHeader } from './components/TrainingHeader';
+import { TrainingHeader, AppThemeMode } from './components/TrainingHeader';
 import { AnnouncementsBanner } from './components/AnnouncementsBanner';
+import { PendingTrainingsReminder } from './components/PendingTrainingsReminder';
 import { TrainingCatalogView } from './components/TrainingCatalogView';
 import { TrainingDetailModal } from './components/TrainingDetailModal';
 import { EBookReader } from './components/EBookReader';
@@ -41,6 +42,37 @@ export default function App() {
   const [trainingActiveTab, setTrainingActiveTab] = useState<'catalog' | 'ebook' | 'video' | 'tebellug' | 'leaderboard' | 'admin'>('catalog');
   const [selectedCategory, setSelectedCategory] = useState<'all' | TrainingCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Global Theme Mode ('sepia' | 'light' | 'dark') across all pages
+  const [appTheme, setAppTheme] = useState<AppThemeMode>(() => {
+    try {
+      const saved = localStorage.getItem('esme_app_theme') as AppThemeMode | null;
+      if (saved === 'sepia' || saved === 'light' || saved === 'dark') {
+        return saved;
+      }
+      return 'light';
+    } catch {
+      return 'light';
+    }
+  });
+
+  const [bellTrigger, setBellTrigger] = useState<number>(0);
+
+  // Sync theme classes on <html> element for high-contrast readability across all modals & pages
+  useEffect(() => {
+    try {
+      localStorage.setItem('esme_app_theme', appTheme);
+    } catch {}
+    const root = document.documentElement;
+    root.classList.remove('dark', 'theme-light', 'theme-sepia');
+    if (appTheme === 'dark') {
+      root.classList.add('dark');
+    } else if (appTheme === 'sepia') {
+      root.classList.add('theme-sepia');
+    } else {
+      root.classList.add('theme-light');
+    }
+  }, [appTheme]);
 
   // Current branch & personnel context for training
   const [currentBranchId, setCurrentBranchId] = useState<number>(() => {
@@ -114,6 +146,16 @@ export default function App() {
 
   const currentBranch = officialEsmeBranches.find(b => b.id === currentBranchId) || officialEsmeBranches[0];
 
+  // Calculate pending trainings count for the active branch
+  const pendingCount = useMemo(() => {
+    const completedIds = new Set(
+      completions
+        .filter(c => Number(c.branchId) === Number(currentBranchId))
+        .map(c => c.trainingId)
+    );
+    return trainings.filter(t => !completedIds.has(t.id)).length;
+  }, [trainings, completions, currentBranchId]);
+
   const handleOpenTrainingDetail = (
     training: TrainingDocument, 
     initialTab: 'content' | 'video' | 'pdf' | 'templates' | 'quiz' | 'presentation' = 'content'
@@ -179,9 +221,17 @@ export default function App() {
   const bilgiIslemCount = trainings.filter(t => t.category === 'bilgi-islem').length;
   const depocuCount = trainings.filter(t => t.category === 'depocu').length;
 
+  // Dynamic root background and high-contrast text colors based on selected theme
+  const themeWrapperClass =
+    appTheme === 'dark'
+      ? 'dark bg-slate-950 text-slate-100'
+      : appTheme === 'sepia'
+      ? 'theme-sepia-wrapper bg-[#f4ecd8] text-[#2c2216]'
+      : 'theme-light bg-slate-100 text-slate-900';
+
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans transition-colors selection:bg-red-500 selection:text-white">
-      <div className="flex-1 flex flex-col bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-100">
+    <div className={`min-h-screen flex flex-col font-sans transition-colors duration-200 selection:bg-red-500 selection:text-white ${appTheme === 'dark' ? 'dark' : ''}`}>
+      <div className={`flex-1 flex flex-col transition-colors duration-200 ${themeWrapperClass}`}>
         {/* Header */}
         <TrainingHeader
           activeTab={trainingActiveTab}
@@ -200,16 +250,98 @@ export default function App() {
           totalCount={trainings.length}
           bilgiIslemCount={bilgiIslemCount}
           depocuCount={depocuCount}
+          appTheme={appTheme}
+          setAppTheme={setAppTheme}
+          pendingCount={pendingCount}
+          onClickPendingBell={() => setBellTrigger(prev => prev + 1)}
         />
 
         {/* Main Content Area */}
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+          {/* Global Theme Switcher Bar (Visible Across All Pages for Instant Access) */}
+          <div className={`mb-4 rounded-2xl border px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 transition-colors ${
+            appTheme === 'dark'
+              ? 'bg-slate-900/90 border-slate-800 text-slate-200'
+              : appTheme === 'sepia'
+              ? 'bg-[#efe4c8] border-[#d5c4a1] text-[#2c2216]'
+              : 'bg-white border-slate-200 text-slate-900 shadow-xs'
+          }`}>
+            <div className="flex items-center gap-2 text-xs font-bold">
+              <span className={`w-2 h-2 rounded-full ${
+                appTheme === 'dark' ? 'bg-indigo-400' : appTheme === 'sepia' ? 'bg-amber-700' : 'bg-emerald-600'
+              }`} />
+              <span>Portal Görünüm Teması (Tüm Sayfalar):</span>
+              <span className={`font-semibold text-[11px] ${
+                appTheme === 'dark' ? 'text-slate-400' : appTheme === 'sepia' ? 'text-[#5c4932]' : 'text-slate-600'
+              }`}>
+                {appTheme === 'sepia' ? 'Kitap Kağıdı (Göz Yormayan Okuma Modu)' : appTheme === 'light' ? 'Açık Tema (Yüksek Kontrastlı Okunaklı Görünüm)' : 'Koyu Tema (Gece Görünümü)'}
+              </span>
+            </div>
+
+            <div className={`flex items-center rounded-xl p-1 border ${
+              appTheme === 'dark'
+                ? 'bg-slate-950 border-slate-800'
+                : appTheme === 'sepia'
+                ? 'bg-[#e6d7b2] border-[#c8b58c]'
+                : 'bg-slate-100 border-slate-200'
+            }`}>
+              <button
+                onClick={() => setAppTheme('sepia')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  appTheme === 'sepia'
+                    ? 'bg-[#f4ecd8] text-[#2c2216] shadow-xs border border-[#c8b58c]'
+                    : appTheme === 'light'
+                    ? 'text-slate-700 hover:text-slate-950 hover:bg-white/60'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Kitap Kağıdı
+              </button>
+              <button
+                onClick={() => setAppTheme('light')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  appTheme === 'light'
+                    ? 'bg-white text-slate-950 shadow-xs border border-slate-300'
+                    : appTheme === 'sepia'
+                    ? 'text-[#433422] hover:text-[#1f170e] hover:bg-white/50'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Açık
+              </button>
+              <button
+                onClick={() => setAppTheme('dark')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  appTheme === 'dark'
+                    ? 'bg-slate-800 text-white shadow-xs border border-slate-700'
+                    : appTheme === 'sepia'
+                    ? 'text-[#433422] hover:text-[#1f170e]'
+                    : 'text-slate-700 hover:text-slate-950'
+                }`}
+              >
+                Koyu
+              </button>
+            </div>
+          </div>
+
           {/* Top Urgent Operational Announcements Banner (Editable by Admins) */}
           <AnnouncementsBanner
             announcements={announcements}
             onSaveAnnouncements={handleSaveAnnouncements}
             isAdmin={isAdmin}
             onRequestAdminAuth={() => setShowAdminAuthModal(true)}
+          />
+
+          {/* Pending Trainings Box & Periodic Reminder Notification System */}
+          <PendingTrainingsReminder
+            trainings={trainings}
+            completions={completions}
+            currentBranchId={currentBranchId}
+            currentPersonnel={currentPersonnel}
+            onSelectTraining={handleOpenTrainingDetail}
+            onOpenTebellugTab={() => setTrainingActiveTab('tebellug')}
+            appTheme={appTheme}
+            bellTrigger={bellTrigger}
           />
           
           {/* VIEW 1: CATALOG */}
@@ -234,6 +366,8 @@ export default function App() {
               trainings={trainings}
               initialTrainingId={ebookTargetTrainingId}
               onOpenTrainingDetail={handleOpenTrainingDetail}
+              appTheme={appTheme}
+              setAppTheme={setAppTheme}
             />
           )}
 
@@ -303,7 +437,7 @@ export default function App() {
                 <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
                   Yönetici İzni Gereklidir
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
+                <p className="text-xs text-slate-600 dark:text-slate-400 mb-6">
                   Yeni eğitim veya video eklemek, mevcut modülleri güncellemek ve resmi tebellüğ raporlarını indirmek için yönetici girişi yapınız.
                 </p>
                 <button
@@ -328,15 +462,15 @@ export default function App() {
                 <p className="font-bold text-slate-200">
                   Esme AVM — Bilgi İşlem & Depo Yönetimi Koordinatörlüğü
                 </p>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-slate-400">
                   esmeegitim — Resmi İç Yönergeler, Eğitim Standartları ve Dijital Tebellüğ Portalı • © {new Date().getFullYear()}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-4 text-[11px]">
-              <span className="text-slate-500">Aktif Şube: <strong className="text-slate-300">{currentBranch.name}</strong></span>
-              <span className="text-slate-500">Personel: <strong className="text-slate-300">{currentPersonnel}</strong></span>
+              <span className="text-slate-400">Aktif Şube: <strong className="text-slate-200">{currentBranch.name}</strong></span>
+              <span className="text-slate-400">Personel: <strong className="text-slate-200">{currentPersonnel}</strong></span>
               <button
                 onClick={() => {
                   if (isAdmin) setIsAdmin(false);

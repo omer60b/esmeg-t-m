@@ -1,1 +1,42 @@
 @import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* High-contrast readability guarantees for Light (Açık) and Sepia (Kitap Kağıdı) themes across all pages */
+html.theme-light body {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+html.theme-sepia body {
+  background-color: #f4e7ce;
+  color: #2c1e11;
+}
+
+.theme-sepia-wrapper {
+  background-color: #f6ead4 !important;
+  color: #2b1d0f !important;
+}
+
+.theme-sepia-wrapper .bg-white {
+  background-color: #fbf3e4 !important;
+  border-color: #e2cfa9 !important;
+  color: #2b1d0f !important;
+}
+
+.theme-sepia-wrapper .bg-slate-50,
+.theme-sepia-wrapper .bg-slate-100 {
+  background-color: #f3e4c8 !important;
+  color: #2b1d0f !important;
+}
+
+.theme-sepia-wrapper .text-slate-900,
+.theme-sepia-wrapper .text-slate-800,
+.theme-sepia-wrapper .text-slate-700 {
+  color: #2b1d0f !important;
+}
+
+.theme-sepia-wrapper .text-slate-600,
+.theme-sepia-wrapper .text-slate-500 {
+  color: #5c4328 !important;
+}

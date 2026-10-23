@@ -8,7 +8,8 @@ import {
   LogOut, 
   LogIn, 
   FileCheck2,
-  Trophy
+  Trophy,
+  Bell
 } from 'lucide-react';
 import { TrainingCategory } from '../types';
 import { officialEsmeBranches } from '../mockData';
@@ -30,6 +31,10 @@ interface TrainingHeaderProps {
   totalCount?: number;
   bilgiIslemCount?: number;
   depocuCount?: number;
+  appTheme?: 'sepia' | 'light' | 'dark';
+  setAppTheme?: (theme: 'sepia' | 'light' | 'dark') => void;
+  pendingCount?: number;
+  onClickPendingBell?: () => void;
 }
 
 export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
@@ -43,7 +48,11 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
   setCurrentPersonnel,
   isAdmin,
   setIsAdmin,
-  onOpenAdminAuth
+  onOpenAdminAuth,
+  appTheme = 'light',
+  setAppTheme,
+  pendingCount = 0,
+  onClickPendingBell
 }) => {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const currentBranch = officialEsmeBranches.find(b => b.id === currentBranchId) || officialEsmeBranches[0];
@@ -172,11 +181,72 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
               </button>
             )}
 
+            {/* Global Theme Switcher (Kitap Kağıdı / Açık / Koyu) for All Pages */}
+            {setAppTheme && (
+              <div className="hidden xl:flex items-center bg-slate-800 p-1 rounded-lg border border-slate-700 text-xs ml-1">
+                <button
+                  type="button"
+                  onClick={() => setAppTheme('sepia')}
+                  className={`px-2 py-1 rounded text-[11px] font-bold transition cursor-pointer ${
+                    appTheme === 'sepia'
+                      ? 'bg-[#fbf0d9] text-[#2b1d0f] shadow-sm'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                  title="Kitap Kağıdı Teması"
+                >
+                  Kitap Kağıdı
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAppTheme('light')}
+                  className={`px-2 py-1 rounded text-[11px] font-bold transition cursor-pointer ${
+                    appTheme === 'light'
+                      ? 'bg-white text-slate-950 shadow-sm'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                  title="Açık Tema"
+                >
+                  Açık
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAppTheme('dark')}
+                  className={`px-2 py-1 rounded text-[11px] font-bold transition cursor-pointer ${
+                    appTheme === 'dark'
+                      ? 'bg-red-600 text-white shadow-sm'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                  title="Koyu Tema"
+                >
+                  Koyu
+                </button>
+              </div>
+            )}
+
+            {/* Pending Trainings Notification Bell */}
+            <button
+              type="button"
+              onClick={onClickPendingBell}
+              className="relative p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 transition cursor-pointer ml-1"
+              title={
+                pendingCount > 0
+                  ? `${pendingCount} Bekleyen Eğitim Modülü`
+                  : 'Tüm Eğitimler Tamamlandı'
+              }
+            >
+              <Bell className={`w-4 h-4 ${pendingCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`} />
+              {pendingCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-black flex items-center justify-center shadow">
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+
             {/* Personnel & Branch Switcher Dropdown */}
-            <div className="relative ml-2">
+            <div className="relative ml-1">
               <button
                 onClick={() => setShowUserDropdown(!showUserDropdown)}
-                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700/80 border border-slate-700 px-2.5 py-1.5 rounded-lg text-xs transition"
+                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700/80 border border-slate-700 px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer"
               >
                 <div className="w-6 h-6 rounded-full bg-red-900/60 border border-red-500/40 flex items-center justify-center text-red-300 font-bold">
                   {currentPersonnel.charAt(0) || 'P'}
@@ -198,7 +268,7 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
                     <p className="text-[11px] text-slate-400">Tebellüğ ve sertifikalarda bu bilgiler yer alır</p>
                   </div>
 
-                  <div className="space-y-2 mb-3">
+                  <div className="space-y-2.5 mb-3">
                     <div>
                       <label className="text-[11px] text-slate-400 block mb-1">Şubeniz (35 Esme Şubesi):</label>
                       <select
@@ -224,6 +294,48 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
                         className="w-full bg-slate-800 border border-slate-700 text-xs text-white rounded-md p-1.5 focus:ring-1 focus:ring-red-500"
                       />
                     </div>
+
+                    {/* Theme Selector in Dropdown for Mobile / Tablet */}
+                    {setAppTheme && (
+                      <div>
+                        <label className="text-[11px] text-slate-400 block mb-1">Sayfa Görünüm Teması:</label>
+                        <div className="grid grid-cols-3 gap-1 bg-slate-800 p-1 rounded-lg border border-slate-700">
+                          <button
+                            type="button"
+                            onClick={() => setAppTheme('sepia')}
+                            className={`py-1 rounded text-[11px] font-bold transition cursor-pointer ${
+                              appTheme === 'sepia'
+                                ? 'bg-[#fbf0d9] text-[#2b1d0f]'
+                                : 'text-slate-300 hover:text-white'
+                            }`}
+                          >
+                            Kitap Kağıdı
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAppTheme('light')}
+                            className={`py-1 rounded text-[11px] font-bold transition cursor-pointer ${
+                              appTheme === 'light'
+                                ? 'bg-white text-slate-950'
+                                : 'text-slate-300 hover:text-white'
+                            }`}
+                          >
+                            Açık
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAppTheme('dark')}
+                            className={`py-1 rounded text-[11px] font-bold transition cursor-pointer ${
+                              appTheme === 'dark'
+                                ? 'bg-red-600 text-white'
+                                : 'text-slate-300 hover:text-white'
+                            }`}
+                          >
+                            Koyu
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-xs">
@@ -233,7 +345,7 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
                           setIsAdmin(false);
                           setShowUserDropdown(false);
                         }}
-                        className="text-rose-400 hover:text-rose-300 flex items-center gap-1 font-medium"
+                        className="text-rose-400 hover:text-rose-300 flex items-center gap-1 font-medium cursor-pointer"
                       >
                         <LogOut className="w-3.5 h-3.5" /> Yönetici Modundan Çık
                       </button>
@@ -243,14 +355,14 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
                           setShowUserDropdown(false);
                           onOpenAdminAuth();
                         }}
-                        className="text-amber-400 hover:text-amber-300 flex items-center gap-1 font-medium"
+                        className="text-amber-400 hover:text-amber-300 flex items-center gap-1 font-medium cursor-pointer"
                       >
                         <LogIn className="w-3.5 h-3.5" /> Yönetici Girişi Yap
                       </button>
                     )}
                     <button
                       onClick={() => setShowUserDropdown(false)}
-                      className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded text-[11px]"
+                      className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded text-[11px] cursor-pointer"
                     >
                       Kapat
                     </button>
