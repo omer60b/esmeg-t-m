@@ -284,66 +284,6 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
           </nav>
         </div>
       </div>
-
-      {/* Primary Category Selector Bar (Bilgi İşlem Eğitim vs Depocu Eğitim) */}
-      <div className="bg-slate-950/70 border-t border-slate-800/80 px-4 py-2">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
-          
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 hidden sm:inline flex items-center gap-1">
-              <Layers className="w-3.5 h-3.5" /> Kategoriler:
-            </span>
-
-            {/* All */}
-            <button
-              onClick={() => setSelectedCategory('all')}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition ${
-                selectedCategory === 'all'
-                  ? 'bg-slate-700 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              Tüm Eğitimler ({totalCount})
-            </button>
-
-            {/* Bilgi İşlem Eğitim */}
-            <button
-              onClick={() => setSelectedCategory('bilgi-islem')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                selectedCategory === 'bilgi-islem'
-                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-900/30 ring-1 ring-blue-400/40'
-                  : 'bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-800'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-blue-400 inline-block animate-pulse"></span>
-              Bilgi İşlem Eğitim ({bilgiIslemCount} Talimat)
-            </button>
-
-            {/* Depocu Eğitim */}
-            <button
-              onClick={() => setSelectedCategory('depocu')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                selectedCategory === 'depocu'
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-900/30 ring-1 ring-emerald-400/40'
-                  : 'bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-800'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
-              Depocu Eğitim ({depocuCount} Kılavuz)
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3 text-xs text-slate-400">
-            <span className="inline-flex items-center gap-1 text-[11px] bg-slate-800 px-2 py-0.5 rounded text-slate-300">
-              <span className="w-2 h-2 rounded-full bg-red-500"></span> Zorunlu Tebellüğe Tabi
-            </span>
-            <span className="hidden md:inline-flex items-center gap-1 text-[11px] bg-slate-800 px-2 py-0.5 rounded text-sky-300">
-              <Video className="w-3 h-3 text-sky-400" /> Videolu Anlatım
-            </span>
-          </div>
-
-        </div>
-      </div>
     </header>
   );
 };
