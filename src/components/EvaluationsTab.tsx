@@ -111,12 +111,12 @@ export const EvaluationsTab: React.FC<EvaluationsTabProps> = ({
   const handleSaveManualEvaluation = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBranchId) {
-      alert('Lütfen mağaza seçiniz.');
+      showSuccess('⚠️ Lütfen mağaza seçiniz.');
       return;
     }
     const scoreNum = Number(manualScore);
     if (isNaN(scoreNum) || scoreNum < 0 || scoreNum > 100) {
-      alert('Lütfen 0 ile 100 arasında geçerli bir puan giriniz.');
+      showSuccess('⚠️ Lütfen 0 ile 100 arasında geçerli bir puan giriniz.');
       return;
     }
 
@@ -151,7 +151,7 @@ export const EvaluationsTab: React.FC<EvaluationsTabProps> = ({
     const canDelete = isSuperAdmin || currentUser?.permissions?.canDeleteCounts;
 
     if (!canDelete) {
-      alert('Yetki Kısıtlaması: Değerlendirme kayıtlarını silme yetkiniz bulunmamaktadır. Yetki için yöneticiler (O.BAS / T.CESUR) ile iletişime geçiniz.');
+      showSuccess('⚠️ Yetki Kısıtlaması: Değerlendirme kayıtlarını silme yetkiniz bulunmamaktadır. Yetki için yöneticiler (O.BAS / T.CESUR) ile iletişime geçiniz.');
       return;
     }
 

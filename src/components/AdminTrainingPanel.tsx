@@ -8,6 +8,7 @@ import {
   TrainingQuizQuestion
 } from '../types';
 import { officialEsmeBranches } from '../mockData';
+import { syncAdminAccountsToFirestore } from '../services/trainingStorage';
 import { 
   Settings, 
   Plus, 
@@ -34,11 +35,12 @@ import {
   Lock,
   Key,
   RotateCcw,
-  Check
+  Check,
+  HelpCircle
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
-import { isYouTubeUrl, getYouTubeThumbnailUrl, UniversalVideoPlayer } from '../utils/videoUtils';
+import { isYouTubeUrl, UniversalVideoPlayer } from '../utils/videoUtils';
 
 export interface CustomAdminAccount {
   id: string;
@@ -57,8 +59,9 @@ interface AdminTrainingPanelProps {
   onDeleteTraining: (id: string) => void;
   onOpenTrainingDetail: (training: TrainingDocument) => void;
   onClose: () => void;
-  onClearCompletions?: () => void;
-  onResetTrainings?: () => void;
+  onClearCompletions?: () => Promise<void> | void;
+  onDeleteCompletion?: (id: string) => Promise<void> | void;
+  onResetTrainings?: () => Promise<void> | void;
   initialVideoUrl?: string | null;
   onClearInitialVideoUrl?: () => void;
 }
@@ -71,6 +74,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
   onOpenTrainingDetail,
   onClose,
   onClearCompletions,
+  onDeleteCompletion,
   onResetTrainings,
   initialVideoUrl,
   onClearInitialVideoUrl
@@ -78,9 +82,26 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
   const [activeAdminTab, setActiveAdminTab] = useState<'trainings' | 'reports' | 'admins'>('trainings');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTraining, setEditingTraining] = useState<TrainingDocument | null>(null);
+  const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // In-app confirmation modal (replaces native browser confirm() which is blocked in iframes)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => Promise<void> | void;
+  } | null>(null);
+
+  const showNotice = (text: string, type: 'success' | 'error' = 'success') => {
+    setStatusBanner({ type, text });
+    setTimeout(() => {
+      setStatusBanner(prev => (prev?.text === text ? null : prev));
+    }, 4500);
+  };
 
   // Active Logged In Admin Check
-  const [currentAdmin, setCurrentAdmin] = useState<{
+  const [currentAdmin] = useState<{
     username: string;
     name: string;
     role: string;
@@ -90,7 +111,6 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
       const raw = localStorage.getItem('esme_current_admin');
       if (raw) return JSON.parse(raw);
     } catch {}
-    // Default to O.BAS Super Admin
     return {
       username: 'O.BAS',
       name: 'O.BAŞ (Genel Yönetici)',
@@ -109,6 +129,31 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     }
   });
 
+  // Master passwords overrides (O.BAS / T.CESUR)
+  const [masterPasswords, setMasterPasswords] = useState<Record<string, string>>(() => {
+    try {
+      const raw = localStorage.getItem('esme_admin_passwords');
+      return raw ? JSON.parse(raw) : { 'O.BAS': '1864', 'T.CESUR': '9084' };
+    } catch {
+      return { 'O.BAS': '1864', 'T.CESUR': '9084' };
+    }
+  });
+
+  // Listen for real-time admin account updates from Firestore
+  useEffect(() => {
+    const handleAdminSync = (e: Event) => {
+      const ce = e as CustomEvent;
+      if (ce.detail?.customAdmins && Array.isArray(ce.detail.customAdmins)) {
+        setCustomAdmins(ce.detail.customAdmins);
+      }
+      if (ce.detail?.masterPasswords && typeof ce.detail.masterPasswords === 'object') {
+        setMasterPasswords(ce.detail.masterPasswords);
+      }
+    };
+    window.addEventListener('admin_accounts_updated', handleAdminSync);
+    return () => window.removeEventListener('admin_accounts_updated', handleAdminSync);
+  }, []);
+
   // New & Edit Admin Form State (O.BAS Authorized Management)
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [editingAdminId, setEditingAdminId] = useState<string | null>(null);
@@ -119,16 +164,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
   const [adminRole, setAdminRole] = useState('Bölge Denetim Müdürü');
   const [adminIsSuper, setAdminIsSuper] = useState(false);
   const [showPasswordsInTable, setShowPasswordsInTable] = useState(false);
-
-  // Master passwords overrides (O.BAS / T.CESUR)
-  const [masterPasswords, setMasterPasswords] = useState<Record<string, string>>(() => {
-    try {
-      const raw = localStorage.getItem('esme_admin_passwords');
-      return raw ? JSON.parse(raw) : { 'O.BAS': '1864', 'T.CESUR': '9084' };
-    } catch {
-      return { 'O.BAS': '1864', 'T.CESUR': '9084' };
-    }
-  });
+  const [adminModalError, setAdminModalError] = useState<string | null>(null);
 
   // Form State for New/Edit Training
   const [formCategory, setFormCategory] = useState<TrainingCategory>('bilgi-islem');
@@ -141,6 +177,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
   const [formAuthor, setFormAuthor] = useState('O.BAŞ (Genel Yönetici)');
   const [formSummary, setFormSummary] = useState('');
   const [formPdfPath, setFormPdfPath] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Video Form State
   const [videoInputType, setVideoInputType] = useState<'link' | 'file' | 'none'>('link');
@@ -175,12 +212,10 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     }
   ]);
 
-  // Sync custom admins to localStorage
-  const saveCustomAdmins = (updated: CustomAdminAccount[]) => {
+  // Sync custom admins to localStorage & Firestore
+  const saveCustomAdmins = (updated: CustomAdminAccount[], updatedMasterPasswords = masterPasswords) => {
     setCustomAdmins(updated);
-    try {
-      localStorage.setItem('esme_custom_admins', JSON.stringify(updated));
-    } catch {}
+    syncAdminAccountsToFirestore(updated, updatedMasterPasswords);
   };
 
   // Open New Admin Modal
@@ -192,6 +227,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     setAdminName('');
     setAdminRole('Bölge Denetim Müdürü');
     setAdminIsSuper(false);
+    setAdminModalError(null);
     setShowAdminModal(true);
   };
 
@@ -204,6 +240,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     setAdminName(admin.name);
     setAdminRole(admin.role);
     setAdminIsSuper(!!admin.isSuperAdmin);
+    setAdminModalError(null);
     setShowAdminModal(true);
   };
 
@@ -216,6 +253,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     setAdminName(username === 'O.BAS' ? 'O.BAŞ (Genel Yönetici)' : 'Turgut CESUR (B.İ. ve Kasa Müdürü)');
     setAdminRole(username === 'O.BAS' ? 'Genel Yönetici (En Yetkili Yönetici)' : 'B.İ. ve Kasa Müdürü');
     setAdminIsSuper(true);
+    setAdminModalError(null);
     setShowAdminModal(true);
   };
 
@@ -223,7 +261,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
   const handleSaveAdmin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!adminUsername.trim() || !adminPassword.trim() || !adminName.trim()) {
-      alert('Lütfen kullanıcı adı, şifre ve ad soyad alanlarını doldurunuz.');
+      setAdminModalError('Lütfen kullanıcı adı, şifre ve ad soyad alanlarını doldurunuz.');
       return;
     }
 
@@ -237,11 +275,9 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
         [targetUser]: adminPassword.trim()
       };
       setMasterPasswords(updatedPasswords);
-      try {
-        localStorage.setItem('esme_admin_passwords', JSON.stringify(updatedPasswords));
-      } catch {}
+      syncAdminAccountsToFirestore(customAdmins, updatedPasswords);
       setShowAdminModal(false);
-      alert(`"${targetUser}" hesabının şifresi ve bilgileri başarıyla güncellendi. Yeni Şifre: ${adminPassword.trim()}`);
+      showNotice(`"${targetUser}" hesabının şifresi ve bilgileri başarıyla güncellendi (Yeni Şifre: ${adminPassword.trim()}).`);
       return;
     }
 
@@ -260,13 +296,13 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
       });
       saveCustomAdmins(updated);
       setShowAdminModal(false);
-      alert(`"${u}" yöneticisinin bilgileri ve şifresi başarıyla güncellendi.`);
+      showNotice(`"${u}" yöneticisinin bilgileri ve şifresi başarıyla güncellendi.`);
       return;
     }
 
     // Custom Admin Create Mode
     if (u === 'O.BAS' || u === 'T.CESUR' || customAdmins.some(a => a.username.toUpperCase() === u)) {
-      alert('Bu kullanıcı adı sistemde zaten kayıtlıdır!');
+      setAdminModalError('Bu kullanıcı adı sistemde zaten kayıtlıdır!');
       return;
     }
 
@@ -282,29 +318,74 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
 
     saveCustomAdmins([...customAdmins, newAdmin]);
     setShowAdminModal(false);
-    alert(`"${u}" kullanıcısı yetkili yönetici olarak başarıyla sisteme tanımlandı. Belirlenen Şifre: ${adminPassword.trim()}`);
+    showNotice(`"${u}" kullanıcısı yetkili yönetici olarak başarıyla tanımlandı.`);
   };
 
   // Delete custom admin account
   const handleDeleteAdmin = (id: string, name: string) => {
-    if (confirm(`"${name}" yöneticisini silmek istediğinize emin misiniz?`)) {
-      saveCustomAdmins(customAdmins.filter(a => a.id !== id));
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Yönetici Hesabını Sil',
+      message: `"${name}" adlı yetkili yönetici hesabını sistemden silmek istediğinize emin misiniz?`,
+      confirmLabel: 'Evet, Hesabı Sil',
+      onConfirm: () => {
+        saveCustomAdmins(customAdmins.filter(a => a.id !== id));
+        showNotice(`"${name}" yönetici hesabı silindi.`);
+      }
+    });
   };
 
-  // Clear all completions (O.BAS Super Admin Action)
+  // Clear all completions (Tebellüğ Kayıtlarını Temizle)
   const handleClearAllCompletions = () => {
-    if (confirm('DİKKAT: Tüm şubelerin imzalanmış tebellüğ kayıtları ve sınav sonuçları sıfırlanacaktır. Bu işlem geri alınamaz. Devam etmek istiyor musunuz?')) {
-      if (confirm('Son Onay: Gerçekten tüm tebellüğ kayıtlarını temizlemek istediğinizi onaylıyor musunuz?')) {
-        try {
-          localStorage.removeItem('esme_training_completions');
-        } catch {}
-        if (onClearCompletions) {
-          onClearCompletions();
-        }
-        window.location.reload();
-      }
+    if (completions.length === 0) {
+      showNotice('Temizlenecek tebellüğ kaydı bulunmamaktadır.', 'error');
+      return;
     }
+
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Tüm Tebellüğ Kayıtlarını Temizle',
+      message: `Sistemde kayıtlı ${completions.length} adet şube tebellüğ imzası ve sınav sonucu hem yerel hafızadan hem de merkezi bulut veritabanından kalıcı olarak temizlenecektir. Onaylıyor musunuz?`,
+      confirmLabel: 'Evet, Tüm Kayıtları Temizle',
+      onConfirm: async () => {
+        if (onClearCompletions) {
+          await onClearCompletions();
+        }
+        showNotice('Tüm şube tebellüğ kayıtları ve imzaları başarıyla temizlendi.');
+      }
+    });
+  };
+
+  // Delete single completion record
+  const handleDeleteSingleCompletion = (comp: TrainingCompletion) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Tebellüğ Kaydını Sil',
+      message: `${comp.branchName} şubesinden "${comp.personnelName}" personeline ait "${comp.trainingTitle}" tebellüğ kaydını silmek istediğinize emin misiniz?`,
+      confirmLabel: 'Kaydı Sil',
+      onConfirm: async () => {
+        if (onDeleteCompletion) {
+          await onDeleteCompletion(comp.id);
+        }
+        showNotice(`"${comp.personnelName}" personeline ait tebellüğ kaydı silindi.`);
+      }
+    });
+  };
+
+  // Reset trainings to factory defaults
+  const handleResetToFactoryDefaults = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Varsayılan 11 Eğitimi Geri Yükle',
+      message: 'Silinen veya değiştirilen tüm eğitim modülleri fabrika ayarlarındaki 11 resmi yönergeye sıfırlanacaktır. Onaylıyor musunuz?',
+      confirmLabel: 'Evet, Fabrika Ayarlarına Dön',
+      onConfirm: async () => {
+        if (onResetTrainings) {
+          await onResetTrainings();
+        }
+        showNotice('Eğitim kataloğu varsayılan 11 resmi yönergeye sıfırlandı.');
+      }
+    });
   };
 
   // Open modal in create mode
@@ -325,6 +406,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     setFormVideoTitle('');
     setFormVideoDuration('05:00');
     setDeviceVideoFileName('');
+    setFormError(null);
     setChapters([
       {
         id: 'ch_1',
@@ -332,6 +414,20 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
         content: 'Buraya ilgili operasyonun tüm detaylarını, yapılması gerekenleri yazınız.',
         highlights: ['Tüm adımlar eksiksiz uygulanmalıdır.'],
         criticalNotes: ['Hatalı işlemlerde derhal ilgili birime bilgi verilmelidir.']
+      }
+    ]);
+    setQuizzes([
+      {
+        id: 'q_1',
+        question: 'Bu talimatnamenin temel amacı nedir?',
+        options: [
+          'Operasyonel hataları sıfıra indirmek ve standart sağlamak',
+          'Süreçleri geciktirmek',
+          'Kayıtsız işlem yapmak',
+          'Belge düzenlememek'
+        ],
+        correctOptionIndex: 0,
+        explanation: 'Talimatname operasyonel hataları önlemek ve kurumsal standardı korumak için hazırlanmıştır.'
       }
     ]);
     setShowAddModal(true);
@@ -363,6 +459,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     setVideoInputType(training.videoType === 'none' ? 'none' : (training.videoType || 'link'));
     setChapters(training.chapters || []);
     setQuizzes(training.quiz || []);
+    setFormError(null);
     setShowAddModal(true);
   };
 
@@ -370,7 +467,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
   const handleSaveForm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formTitle.trim()) {
-      alert('Lütfen bir eğitim başlığı giriniz.');
+      setFormError('Lütfen bir eğitim başlığı giriniz.');
       return;
     }
 
@@ -408,10 +505,19 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
 
     onSaveTraining(payload);
     setShowAddModal(false);
+    showNotice(
+      editingTraining
+        ? `"${payload.title}" eğitimi güncellendi ve tüm kullanıcılara anlık yayınlandı.`
+        : `"${payload.title}" eğitimi eklendi ve tüm kullanıcılara anlık yayınlandı.`
+    );
   };
 
   // Export completion report to Excel
   const handleExportExcel = () => {
+    if (completions.length === 0) {
+      showNotice('İndirilecek tebellüğ kaydı bulunmamaktadır.', 'error');
+      return;
+    }
     const rows = completions.map(c => ({
       'Tebellüğ No': c.certificateId,
       'Eğitim Adı': c.trainingTitle,
@@ -430,11 +536,35 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Tebellüğ Raporu");
     XLSX.writeFile(wb, `esmeegitim_Tebellug_Raporu_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    showNotice('Tebellüğ raporu Excel (.xlsx) olarak indirildi.');
   };
 
   return (
     <div className="space-y-6">
-      
+      {/* Status Toast Banner */}
+      {statusBanner && (
+        <div className={`p-4 rounded-2xl border text-xs font-bold flex items-center justify-between gap-3 shadow-sm ${
+          statusBanner.type === 'success'
+            ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+            : 'bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200'
+        }`}>
+          <div className="flex items-center gap-2">
+            {statusBanner.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            )}
+            <span>{statusBanner.text}</span>
+          </div>
+          <button
+            onClick={() => setStatusBanner(null)}
+            className="text-current opacity-60 hover:opacity-100 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Admin Panel Header with Super Admin O.BAS Badge */}
       <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white rounded-2xl p-6 sm:p-8 border border-amber-900/50 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -581,27 +711,33 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               onClick={() => onOpenTrainingDetail(t)}
-                              className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 transition"
+                              className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 transition cursor-pointer"
                               title="Önizle / Oku"
                             >
                               <FileText className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleOpenEdit(t)}
-                              className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950 hover:bg-blue-100 text-blue-600 dark:text-blue-400 transition"
+                              className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950 hover:bg-blue-100 text-blue-600 dark:text-blue-400 transition cursor-pointer"
                               title="Düzenle"
                             >
                               <Edit3 className="w-3.5 h-3.5" />
                             </button>
-                            {/* O.BAS can delete any training, custom or default if needed */}
-                            {(t.isCustom || currentAdmin.username === 'O.BAS') && (
+                            {(t.isCustom || currentAdmin.isSuperAdmin || currentAdmin.username === 'O.BAS') && (
                               <button
                                 onClick={() => {
-                                  if (confirm(`"${t.title}" eğitimini silmek istediğinize emin misiniz?`)) {
-                                    onDeleteTraining(t.id);
-                                  }
+                                  setConfirmDialog({
+                                    isOpen: true,
+                                    title: 'Eğitim Modülünü Sil',
+                                    message: `"${t.title}" eğitimini sistemden ve tüm kullanıcıların ekranından kaldırmak istediğinize emin misiniz?`,
+                                    confirmLabel: 'Evet, Eğitimi Sil',
+                                    onConfirm: () => {
+                                      onDeleteTraining(t.id);
+                                      showNotice(`"${t.title}" eğitimi silindi.`);
+                                    }
+                                  });
                                 }}
-                                className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950 hover:bg-rose-100 text-rose-600 dark:text-rose-400 transition"
+                                className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950 hover:bg-rose-100 text-rose-600 dark:text-rose-400 transition cursor-pointer"
                                 title="Sil"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -634,8 +770,9 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              {currentAdmin.username === 'O.BAS' && completions.length > 0 && (
+              {completions.length > 0 && (
                 <button
+                  type="button"
                   onClick={handleClearAllCompletions}
                   className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-1.5 border border-rose-300 dark:border-rose-800 transition cursor-pointer"
                   title="Tüm şube imzalarını temizle"
@@ -646,6 +783,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
               )}
 
               <button
+                type="button"
                 onClick={handleExportExcel}
                 className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow transition cursor-pointer"
               >
@@ -669,12 +807,13 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                     <th className="p-3.5">Sınav Skoru</th>
                     <th className="p-3.5">Tarih / Saat</th>
                     <th className="p-3.5">Taahhüt Durumu</th>
+                    <th className="p-3.5 text-right">İşlem</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {completions.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-slate-400">
+                      <td colSpan={9} className="p-8 text-center text-slate-400">
                         Henüz kayıtlı bir tebellüğ onay kaydı bulunmamaktadır.
                       </td>
                     </tr>
@@ -710,6 +849,16 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
                             <CheckCircle2 className="w-3.5 h-3.5" /> İmzalandı
                           </span>
+                        </td>
+                        <td className="p-3.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSingleCompletion(c)}
+                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900 text-rose-600 dark:text-rose-400 transition cursor-pointer"
+                            title="Bu tebellüğ kaydını sil"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </td>
                       </tr>
                     ))
@@ -911,10 +1060,10 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
             <h4 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-2">
               <ShieldAlert className="w-4 h-4 text-red-600" />
-              Süper Yönetici Sıfırlama ve Temizleme Araçları (Yalnızca O.BAS)
+              Süper Yönetici Sıfırlama ve Temizleme Araçları
             </h4>
             <p className="text-xs text-slate-500">
-              Bu alandaki işlemler doğrudan veritabanını ve yerel kayıtları etkiler. Yalnızca Genel Yönetici O.BAS tarafından uygulanabilir.
+              Bu alandaki işlemler doğrudan merkezi bulut veritabanını ve yerel kayıtları temizler.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
@@ -928,11 +1077,12 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                   </p>
                 </div>
                 <button
+                  type="button"
                   onClick={handleClearAllCompletions}
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Tebellüğ Kayıtlarını Sıfırla</span>
+                  <span>Tebellüğ Kayıtlarını Sıfırla ({completions.length})</span>
                 </button>
               </div>
 
@@ -946,17 +1096,8 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                   </p>
                 </div>
                 <button
-                  onClick={() => {
-                    if (confirm('Tüm eğitimler fabrika ayarlarına döndürülecektir. Devam edilsin mi?')) {
-                      if (onResetTrainings) {
-                        onResetTrainings();
-                      } else {
-                        localStorage.removeItem('esme_akademi_trainings_v2');
-                        localStorage.removeItem('esme_deleted_training_ids_v1');
-                        window.location.reload();
-                      }
-                    }
-                  }}
+                  type="button"
+                  onClick={handleResetToFactoryDefaults}
                   className="px-4 py-2 bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
@@ -969,6 +1110,49 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
         </div>
       )}
 
+      {/* IN-APP CONFIRMATION DIALOG MODAL */}
+      {confirmDialog && confirmDialog.isOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3">
+              <div className="w-11 h-11 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-600 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+                  {confirmDialog.title}
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                  {confirmDialog.message}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setConfirmDialog(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition cursor-pointer"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const action = confirmDialog.onConfirm;
+                  setConfirmDialog(null);
+                  await action();
+                }}
+                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-900/30 transition cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{confirmDialog.confirmLabel}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* CREATE & EDIT ADMIN MODAL (O.BAS AUTHORIZED CONSOLE) */}
       {showAdminModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
@@ -976,7 +1160,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
             
             <button
               onClick={() => setShowAdminModal(false)}
-              className="absolute right-4 top-4 p-1.5 rounded-lg text-slate-400 hover:text-white"
+              className="absolute right-4 top-4 p-1.5 rounded-lg text-slate-400 hover:text-white cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -994,6 +1178,12 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                 </p>
               </div>
             </div>
+
+            {adminModalError && (
+              <div className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold">
+                {adminModalError}
+              </div>
+            )}
 
             <form onSubmit={handleSaveAdmin} className="space-y-4 text-xs">
               <div>
@@ -1019,7 +1209,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowAdminPasswordText(!showAdminPasswordText)}
-                    className="text-[11px] text-red-500 hover:underline font-semibold"
+                    className="text-[11px] text-red-500 hover:underline font-semibold cursor-pointer"
                   >
                     {showAdminPasswordText ? 'Gizle' : 'Şifreyi Göster'}
                   </button>
@@ -1087,13 +1277,13 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowAdminModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 font-bold"
+                  className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 font-bold cursor-pointer"
                 >
                   İptal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold flex items-center gap-1.5 shadow"
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold flex items-center gap-1.5 shadow cursor-pointer"
                 >
                   <Save className="w-4 h-4" />
                   <span>{editingAdminId ? 'Değişiklikleri Kaydet' : 'Yöneticiyi Kaydet'}</span>
@@ -1117,14 +1307,19 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
               </h3>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white"
+                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleSaveForm} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 text-xs">
-              
+              {formError && (
+                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-semibold">
+                  {formError}
+                </div>
+              )}
+
               {/* Category and Priority */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -1410,7 +1605,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                         }
                       ]);
                     }}
-                    className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold rounded text-[11px]"
+                    className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold rounded text-[11px] cursor-pointer"
                   >
                     + Madde Ekle
                   </button>
@@ -1426,7 +1621,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                         <button
                           type="button"
                           onClick={() => setChapters(chapters.filter((_, i) => i !== cIdx))}
-                          className="text-rose-500 hover:text-rose-400 text-[11px]"
+                          className="text-rose-500 hover:text-rose-400 text-[11px] cursor-pointer"
                         >
                           Sil
                         </button>
@@ -1437,7 +1632,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                       value={chap.title}
                       onChange={(e) => {
                         const updated = [...chapters];
-                        updated[cIdx].title = e.target.value;
+                        updated[cIdx] = { ...updated[cIdx], title: e.target.value };
                         setChapters(updated);
                       }}
                       className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-semibold"
@@ -1447,11 +1642,99 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                       value={chap.content}
                       onChange={(e) => {
                         const updated = [...chapters];
-                        updated[cIdx].content = e.target.value;
+                        updated[cIdx] = { ...updated[cIdx], content: e.target.value };
                         setChapters(updated);
                       }}
                       className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs"
                     />
+                  </div>
+                ))}
+              </div>
+
+              {/* Quiz Questions Section */}
+              <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <HelpCircle className="w-4 h-4 text-emerald-500" />
+                    Eğitim Sınav Soruları ({quizzes.length})
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuizzes([
+                        ...quizzes,
+                        {
+                          id: `q_${Date.now()}`,
+                          question: `${quizzes.length + 1}. Yeni Sınav Sorusu`,
+                          options: ['Doğru Seçenek', 'Seçenek B', 'Seçenek C', 'Seçenek D'],
+                          correctOptionIndex: 0,
+                          explanation: 'Doğru cevabın açıklaması.'
+                        }
+                      ]);
+                    }}
+                    className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 font-bold rounded text-[11px] cursor-pointer"
+                  >
+                    + Soru Ekle
+                  </button>
+                </div>
+
+                {quizzes.map((q, qIdx) => (
+                  <div key={q.id || qIdx} className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-600 dark:text-slate-300">
+                        Soru {qIdx + 1}
+                      </span>
+                      {quizzes.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setQuizzes(quizzes.filter((_, i) => i !== qIdx))}
+                          className="text-rose-500 hover:text-rose-400 text-[11px] cursor-pointer"
+                        >
+                          Sil
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      value={q.question}
+                      onChange={(e) => {
+                        const updated = [...quizzes];
+                        updated[qIdx] = { ...updated[qIdx], question: e.target.value };
+                        setQuizzes(updated);
+                      }}
+                      placeholder="Soru metni..."
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-semibold"
+                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {q.options.map((opt, oIdx) => (
+                        <div key={oIdx} className="flex items-center gap-1.5">
+                          <input
+                            type="radio"
+                            name={`correct_${q.id || qIdx}`}
+                            checked={q.correctOptionIndex === oIdx}
+                            onChange={() => {
+                              const updated = [...quizzes];
+                              updated[qIdx] = { ...updated[qIdx], correctOptionIndex: oIdx };
+                              setQuizzes(updated);
+                            }}
+                            title="Doğru şık olarak işaretle"
+                            className="cursor-pointer"
+                          />
+                          <input
+                            type="text"
+                            value={opt}
+                            onChange={(e) => {
+                              const updated = [...quizzes];
+                              const newOpts = [...updated[qIdx].options];
+                              newOpts[oIdx] = e.target.value;
+                              updated[qIdx] = { ...updated[qIdx], options: newOpts };
+                              setQuizzes(updated);
+                            }}
+                            className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 text-xs"
+                          />
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1461,13 +1744,13 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 font-bold text-slate-600 dark:text-slate-300"
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 font-bold text-slate-600 dark:text-slate-300 cursor-pointer"
                 >
                   İptal
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold flex items-center gap-2 shadow-lg shadow-red-900/40"
+                  className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold flex items-center gap-2 shadow-lg shadow-red-900/40 cursor-pointer"
                 >
                   <Save className="w-4 h-4" />
                   <span>{editingTraining ? 'Değişiklikleri Kaydet' : 'Eğitimi Yayınla'}</span>

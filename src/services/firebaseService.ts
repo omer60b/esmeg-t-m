@@ -79,7 +79,7 @@ export async function syncToFirestore(data: AppDatabase): Promise<boolean> {
       ...cleanData,
       updatedAt: new Date().toISOString()
     };
-    await setDoc(APP_DATA_DOC, payload, { merge: true });
+    await setDoc(APP_DATA_DOC, payload);
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, pathForWrite);

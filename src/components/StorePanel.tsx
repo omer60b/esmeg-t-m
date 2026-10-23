@@ -92,6 +92,19 @@ export const StorePanel: React.FC<StorePanelProps> = ({ user, db, onUpdateDb, on
   const branchStatus = (db.branchStatuses || []).find(s => Number(s.branchId) === branchIdNum);
   const isCountCompleted = Boolean(branchStatus?.isCompleted);
   const [showCompletedModal, setShowCompletedModal] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmLabel: 'Onayla',
+    onConfirm: () => {}
+  });
 
   // Assigned Products for this branch:
   // Shows products assigned to this branch, assigned to all branches ('all' / 0), or all products if no assignments registered
@@ -235,13 +248,13 @@ export const StorePanel: React.FC<StorePanelProps> = ({ user, db, onUpdateDb, on
     e.preventDefault();
     const cleaned = manualBarcode.trim();
     if (!cleaned) {
-      alert('Lütfen bir barkod veya ürün kodu giriniz.');
+      showToast('⚠️ Lütfen bir barkod veya ürün kodu giriniz.');
       return;
     }
 
     const qty = manualQuantity === '' ? 1 : Number(manualQuantity);
     if (isNaN(qty) || qty < 0) {
-      alert('Lütfen geçerli bir ürün adeti giriniz.');
+      showToast('⚠️ Lütfen geçerli bir ürün adeti giriniz.');
       return;
     }
 
@@ -250,13 +263,13 @@ export const StorePanel: React.FC<StorePanelProps> = ({ user, db, onUpdateDb, on
     );
 
     if (!prod) {
-      alert(`Tanımsız Barkod: "${cleaned}". Bu ürün merkez veritabanında kayıtlı değildir.`);
+      showToast(`⚠️ Tanımsız Barkod: "${cleaned}". Bu ürün merkez veritabanında kayıtlı değildir.`);
       return;
     }
 
     const isAssigned = db.assignments.some(a => a.branchId === user.branchId && a.productId === prod.id);
     if (!isAssigned) {
-      alert(`"${prod.description}" ürünü bu mağazaya atanmamıştır!`);
+      showToast(`⚠️ "${prod.description}" ürünü bu mağazaya atanmamıştır!`);
       return;
     }
 
@@ -328,78 +341,84 @@ export const StorePanel: React.FC<StorePanelProps> = ({ user, db, onUpdateDb, on
     const totalQty = countedRecords.reduce((sum, c) => sum + (c.quantity || 0), 0);
 
     if (countedItemsCount === 0) {
-      alert('Yönetime göndermek için en az 1 ürünün sayımını yapmış olmalısınız.');
+      showToast('⚠️ Yönetime göndermek için en az 1 ürünün sayımını yapmış olmalısınız.');
       return;
     }
 
-    const conf = window.confirm(
-      `Sayım listenizde ${countedItemsCount} kalem (${totalQty} adet) ürün bulunmaktadır.\n\nBu sayımı merkez yönetimine resmi olarak teslim etmek istediğinize emin misiniz?\n\nSayımı tamamladığınızda sayım listeniz otomatik olarak temizlenecektir.`
-    );
-    if (!conf) return;
+    setConfirmModal({
+      isOpen: true,
+      title: 'Sayımı Tamamla ve Yönetime Gönder',
+      message: `Sayım listenizde ${countedItemsCount} kalem (${totalQty} adet) ürün bulunmaktadır. Bu sayımı merkez yönetimine resmi olarak teslim etmek istediğinize emin misiniz? Sayımı tamamladığınızda sayım listeniz otomatik olarak temizlenecektir.`,
+      confirmLabel: 'Evet, Yönetime Gönder',
+      onConfirm: () => {
+        setSubmissionStatus('submitted');
+        try {
+          localStorage.setItem(statusKey, 'submitted');
+        } catch (e) {
+          console.error(e);
+        }
 
-    setSubmissionStatus('submitted');
-    try {
-      localStorage.setItem(statusKey, 'submitted');
-    } catch (e) {
-      console.error(e);
-    }
+        // Update local database with branch completion status
+        onUpdateDb(prev => {
+          let statuses = [...(prev.branchStatuses || [])];
+          const idx = statuses.findIndex(s => Number(s.branchId) === branchIdNum);
+          const rec = {
+            branchId: branchIdNum,
+            isCompleted: true,
+            completedAt: new Date().toLocaleString('tr-TR'),
+            completedBy: user.fullName || user.username,
+            totalQty,
+            distinctItems: countedItemsCount,
+            batchId: prev.currentBatchId || 'batch_initial'
+          };
+          if (idx >= 0) statuses[idx] = rec;
+          else statuses.push(rec);
 
-    // Update local database with branch completion status
-    onUpdateDb(prev => {
-      let statuses = [...(prev.branchStatuses || [])];
-      const idx = statuses.findIndex(s => Number(s.branchId) === branchIdNum);
-      const rec = {
-        branchId: branchIdNum,
-        isCompleted: true,
-        completedAt: new Date().toLocaleString('tr-TR'),
-        completedBy: user.fullName || user.username,
-        totalQty,
-        distinctItems: countedItemsCount,
-        batchId: prev.currentBatchId || 'batch_initial'
-      };
-      if (idx >= 0) statuses[idx] = rec;
-      else statuses.push(rec);
+          return {
+            ...prev,
+            branchStatuses: statuses
+          };
+        });
 
-      return {
-        ...prev,
-        branchStatuses: statuses
-      };
+        // Also sync to central server
+        completeBranchCountServer(branchIdNum, user.fullName || user.username, totalQty, countedItemsCount).catch(() => {});
+
+        showToast('🎉 Sayım başarıyla tamamlandı, merkeze teslim edildi ve listeniz temizlendi!');
+      }
     });
-
-    // Also sync to central server
-    completeBranchCountServer(branchIdNum, user.fullName || user.username, totalQty, countedItemsCount).catch(() => {});
-
-    showToast('🎉 Sayım başarıyla tamamlandı, merkeze teslim edildi ve listeniz temizlendi!');
   };
 
   // Re-open for Editing
   const handleReopenForEditing = () => {
-    const conf = window.confirm(
-      'Sayım listesini yeniden düzenlemek için açmak istediğinize emin misiniz? Düzenlemeler tamamlandıktan sonra tekrar gönderebilirsiniz.'
-    );
-    if (!conf) return;
+    setConfirmModal({
+      isOpen: true,
+      title: 'Sayımı Yeniden Aç & Düzenle',
+      message: 'Sayım listesini yeniden düzenlemek için açmak istediğinize emin misiniz? Düzenlemeler tamamlandıktan sonra tekrar gönderebilirsiniz.',
+      confirmLabel: 'Evet, Yeniden Aç',
+      onConfirm: () => {
+        setSubmissionStatus('draft');
+        try {
+          localStorage.setItem(statusKey, 'draft');
+        } catch (e) {
+          console.error(e);
+        }
 
-    setSubmissionStatus('draft');
-    try {
-      localStorage.setItem(statusKey, 'draft');
-    } catch (e) {
-      console.error(e);
-    }
+        onUpdateDb(prev => {
+          let statuses = [...(prev.branchStatuses || [])];
+          const idx = statuses.findIndex(s => Number(s.branchId) === branchIdNum);
+          if (idx >= 0) {
+            statuses[idx] = { ...statuses[idx], isCompleted: false };
+          }
+          return {
+            ...prev,
+            branchStatuses: statuses
+          };
+        });
 
-    onUpdateDb(prev => {
-      let statuses = [...(prev.branchStatuses || [])];
-      const idx = statuses.findIndex(s => Number(s.branchId) === branchIdNum);
-      if (idx >= 0) {
-        statuses[idx] = { ...statuses[idx], isCompleted: false };
+        reopenBranchCountServer(branchIdNum).catch(() => {});
+        showToast('Sayım düzenleme moduna geri alındı.');
       }
-      return {
-        ...prev,
-        branchStatuses: statuses
-      };
     });
-
-    reopenBranchCountServer(branchIdNum).catch(() => {});
-    showToast('Sayım düzenleme moduna geri alındı.');
   };
 
   // Camera scanner start/stop
@@ -1440,6 +1459,47 @@ export const StorePanel: React.FC<StorePanelProps> = ({ user, db, onUpdateDb, on
           </div>
         )}
       </main>
+
+      {/* Confirmation Modal */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 border border-slate-200 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-indigo-100 text-indigo-600 rounded-2xl shrink-0">
+                <Send className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base">
+                  {confirmModal.title}
+                </h3>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  {confirmModal.message}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const fn = confirmModal.onConfirm;
+                  setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                  fn();
+                }}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition cursor-pointer"
+              >
+                {confirmModal.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

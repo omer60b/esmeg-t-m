@@ -124,6 +124,7 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
   const [personnelInputName, setPersonnelInputName] = useState(currentPersonnel || '');
   const [showCertificateModal, setShowCertificateModal] = useState(false);
   const [generatedCertificateId, setGeneratedCertificateId] = useState<string | null>(null);
+  const [quizValidationMsg, setQuizValidationMsg] = useState<string | null>(null);
 
   const isBilgiIslem = training.category === 'bilgi-islem';
   const currentChapter = training.chapters[activeChapterIndex] || training.chapters[0];
@@ -197,6 +198,7 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
 
   const handleAnswerSelect = (qId: string, optionIndex: number) => {
     if (quizSubmitted) return;
+    setQuizValidationMsg(null);
     setSelectedAnswers(prev => ({
       ...prev,
       [qId]: optionIndex
@@ -205,32 +207,41 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
 
   const handleSubmitQuiz = () => {
     if (Object.keys(selectedAnswers).length < randomizedQuestions.length) {
-      alert('Lütfen sınavı tamamlamadan önce tüm 5 soruyu cevaplayınız.');
+      setQuizValidationMsg(`Lütfen sınavı tamamlamadan önce tüm ${randomizedQuestions.length} soruyu cevaplayınız.`);
       return;
     }
+    setQuizValidationMsg(null);
     setQuizSubmitted(true);
+  };
+
+  const handleRetryQuiz = () => {
+    setSelectedAnswers({});
+    setQuizSubmitted(false);
+    setQuizValidationMsg(null);
   };
 
   const handleFinalSignAgreement = () => {
     if (!personnelInputName.trim()) {
-      alert('Lütfen tebellüğ eden personel adını ve soyadını yazınız.');
+      setQuizValidationMsg('Lütfen tebellüğ eden personel adını ve soyadını yazınız.');
       return;
     }
 
     if (totalQuestions > 0 && !quizSubmitted) {
-      alert('Lütfen öncelikle yukarıdaki 5 soruluk anlama testini çözüp "Sınavı Tamamla" butonuna tıklayınız.');
+      setQuizValidationMsg('Lütfen öncelikle yukarıdaki 5 soruluk anlama testini çözüp "Sınavı Tamamla ve Sonucu Gör" butonuna tıklayınız.');
       return;
     }
 
     if (totalQuestions > 0 && !isPassed) {
-      alert(`Sınav başarı barajını (%80 - En az 4 doğru) henüz sağlayamadınız. Puanınız: ${correctCount}/${totalQuestions}. Lütfen soruları tekrar inceleyip testi yeniden deneyiniz.`);
+      setQuizValidationMsg(`Sınav başarı barajını (%80 - En az 4 doğru) henüz sağlayamadınız. Puanınız: ${correctCount}/${totalQuestions}. Lütfen "Sınavı Yeniden Dene" butonuna tıklayarak testi tekrar çözünüz.`);
       return;
     }
 
     if (!agreedToTerms) {
-      alert('Lütfen tebellüğ taahhütnamesini okuduğunuzu onaylayan kutucuğu işaretleyiniz.');
+      setQuizValidationMsg('Lütfen tebellüğ taahhütnamesini okuduğunuzu onaylayan kutucuğu işaretleyiniz.');
       return;
     }
+
+    setQuizValidationMsg(null);
 
     const certId = `ESME-TBL-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
     setGeneratedCertificateId(certId);
@@ -1193,7 +1204,13 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
 
                   {/* Submit Quiz Button */}
                   {!quizSubmitted && (
-                    <div className="text-center pt-2">
+                    <div className="text-center pt-2 space-y-3">
+                      {quizValidationMsg && (
+                        <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs font-bold flex items-center justify-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span>{quizValidationMsg}</span>
+                        </div>
+                      )}
                       <button
                         onClick={handleSubmitQuiz}
                         className="px-8 py-3 bg-red-600 hover:bg-red-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-red-900/30 transition cursor-pointer"
@@ -1217,9 +1234,19 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
                         Puanınız: <strong>{correctCount} / {totalQuestions} Doğru</strong> (%{Math.round((correctCount / totalQuestions) * 100)}) • Başarı Şartı: En az 4 Doğru (%80)
                       </p>
                       {!isPassed && (
-                        <p className="text-[11px] opacity-80 mt-1">
-                          Lütfen hatalı cevapladığınız soruların açıklamalarını inceleyip yönerge maddelerini tekrar okuduktan sonra sınavı yeniden deneyiniz.
-                        </p>
+                        <div className="pt-2 space-y-2">
+                          <p className="text-[11px] opacity-80">
+                            Lütfen hatalı cevapladığınız soruların açıklamalarını inceleyip yönerge maddelerini tekrar okuduktan sonra sınavı yeniden deneyiniz.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleRetryQuiz}
+                            className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow cursor-pointer"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Sınavı Yeniden Dene</span>
+                          </button>
+                        </div>
                       )}
                     </div>
                   )}
@@ -1232,6 +1259,12 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
 
               {/* Digital Tebellüğ & Taahhüt Form */}
               <div className="bg-gradient-to-br from-slate-900 to-slate-950 text-white rounded-2xl p-6 border border-slate-800 shadow-xl space-y-4">
+                {quizValidationMsg && (
+                  <div className="p-3.5 rounded-xl bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs font-bold flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>{quizValidationMsg}</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 pb-3 border-b border-slate-800 text-amber-400">
                   <ShieldAlert className="w-5 h-5 text-amber-400" />
                   <h4 className="text-sm font-extrabold uppercase tracking-wider text-white">

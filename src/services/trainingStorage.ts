@@ -13,10 +13,14 @@ import { initialTrainings } from '../data/trainingData';
 
 const STORAGE_TRAININGS_KEY = 'esme_akademi_trainings_v2';
 const STORAGE_COMPLETIONS_KEY = 'esme_akademi_completions_v1';
+const STORAGE_LEGACY_COMPLETIONS_KEY = 'esme_training_completions';
 const STORAGE_DELETED_IDS_KEY = 'esme_deleted_training_ids_v1';
+const STORAGE_CUSTOM_ADMINS_KEY = 'esme_custom_admins';
+const STORAGE_ADMIN_PASSWORDS_KEY = 'esme_admin_passwords';
 
 const TRAINING_CATALOG_DOC = doc(db, 'appData', 'trainings_catalog');
 const TRAINING_COMPLETIONS_DOC = doc(db, 'appData', 'training_completions');
+const ADMIN_ACCOUNTS_DOC = doc(db, 'appData', 'admin_accounts');
 const TRAININGS_COLLECTION = collection(db, 'trainings');
 
 // BroadcastChannel for instant multi-tab sync on the same browser
@@ -130,7 +134,7 @@ export async function saveTrainings(trainings: TrainingDocument[]): Promise<bool
         trainings: cleanPayload,
         deletedIds: Array.from(getDeletedIds()),
         updatedAt: new Date().toISOString()
-      }, { merge: true });
+      });
     } catch (fsErr) {
       handleFirestoreError(fsErr, OperationType.WRITE, 'appData/trainings_catalog');
     }
@@ -175,7 +179,7 @@ export async function upsertTraining(training: TrainingDocument): Promise<boolea
   // Also write individual document to `trainings/{id}` collection for guaranteed real-time sync
   try {
     const cleanItem = JSON.parse(JSON.stringify(normalizedItem));
-    await setDoc(doc(db, 'trainings', normalizedItem.id), cleanItem, { merge: true });
+    await setDoc(doc(db, 'trainings', normalizedItem.id), cleanItem);
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, `trainings/${normalizedItem.id}`);
   }
@@ -275,7 +279,7 @@ export async function recordTrainingCompletion(completion: TrainingCompletion): 
       await setDoc(TRAINING_COMPLETIONS_DOC, {
         completions: cleanPayload,
         updatedAt: new Date().toISOString()
-      }, { merge: true });
+      });
     } catch (fsErr) {
       handleFirestoreError(fsErr, OperationType.WRITE, 'appData/training_completions');
     }
@@ -284,6 +288,83 @@ export async function recordTrainingCompletion(completion: TrainingCompletion): 
   } catch (err) {
     console.error('Error recording completion:', err);
     return false;
+  }
+}
+
+/**
+ * Delete a single training completion record and sync to Firestore
+ */
+export async function deleteTrainingCompletion(completionId: string): Promise<TrainingCompletion[]> {
+  try {
+    const list = getStoredCompletions();
+    const updated = list.filter(c => c.id !== completionId);
+    localStorage.setItem(STORAGE_COMPLETIONS_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('completions_updated', { detail: updated }));
+    trainingChannel?.postMessage({ type: 'COMPLETIONS_UPDATED', completions: updated });
+
+    try {
+      const cleanPayload = JSON.parse(JSON.stringify(updated));
+      await setDoc(TRAINING_COMPLETIONS_DOC, {
+        completions: cleanPayload,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (fsErr) {
+      handleFirestoreError(fsErr, OperationType.WRITE, 'appData/training_completions');
+    }
+
+    return updated;
+  } catch (err) {
+    console.error('Error deleting completion:', err);
+    return getStoredCompletions();
+  }
+}
+
+/**
+ * Clear ALL training completions (tebellüğ records) from localStorage, BroadcastChannel, and Firestore
+ */
+export async function clearAllCompletions(): Promise<boolean> {
+  try {
+    localStorage.setItem(STORAGE_COMPLETIONS_KEY, JSON.stringify([]));
+    localStorage.removeItem(STORAGE_LEGACY_COMPLETIONS_KEY);
+    window.dispatchEvent(new CustomEvent('completions_updated', { detail: [] }));
+    trainingChannel?.postMessage({ type: 'COMPLETIONS_UPDATED', completions: [] });
+
+    try {
+      await setDoc(TRAINING_COMPLETIONS_DOC, {
+        completions: [],
+        updatedAt: new Date().toISOString()
+      });
+    } catch (fsErr) {
+      handleFirestoreError(fsErr, OperationType.WRITE, 'appData/training_completions');
+    }
+
+    return true;
+  } catch (err) {
+    console.error('Error clearing completions:', err);
+    return false;
+  }
+}
+
+/**
+ * Sync custom admin accounts and master password overrides to Firestore
+ */
+export async function syncAdminAccountsToFirestore(
+  customAdmins: any[],
+  masterPasswords: Record<string, string>
+): Promise<void> {
+  try {
+    localStorage.setItem(STORAGE_CUSTOM_ADMINS_KEY, JSON.stringify(customAdmins));
+    localStorage.setItem(STORAGE_ADMIN_PASSWORDS_KEY, JSON.stringify(masterPasswords));
+    window.dispatchEvent(new CustomEvent('admin_accounts_updated', { detail: { customAdmins, masterPasswords } }));
+    trainingChannel?.postMessage({ type: 'ADMIN_ACCOUNTS_UPDATED', customAdmins, masterPasswords });
+
+    await setDoc(ADMIN_ACCOUNTS_DOC, {
+      customAdmins: JSON.parse(JSON.stringify(customAdmins)),
+      masterPasswords: JSON.parse(JSON.stringify(masterPasswords)),
+      updatedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, 'appData/admin_accounts');
   }
 }
 
@@ -341,7 +422,7 @@ export function subscribeToTrainingUpdates(
       }
     });
     latestCollectionItems = docs;
-    if (docs.length > 0) {
+    if (docs.length > 0 || latestCatalogItems.length > 0) {
       emitCombinedTrainings();
     }
   }, (err) => {
@@ -361,7 +442,28 @@ export function subscribeToTrainingUpdates(
     handleFirestoreError(err, OperationType.GET, 'appData/training_completions');
   });
 
-  // 4. Local CustomEvents, Cross-tab Storage Events & BroadcastChannel
+  // 4. Firestore Admin Accounts Listener
+  const unsubAdmins = onSnapshot(ADMIN_ACCOUNTS_DOC, (snap) => {
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data) {
+        if (Array.isArray(data.customAdmins)) {
+          localStorage.setItem(STORAGE_CUSTOM_ADMINS_KEY, JSON.stringify(data.customAdmins));
+        }
+        if (data.masterPasswords && typeof data.masterPasswords === 'object') {
+          localStorage.setItem(STORAGE_ADMIN_PASSWORDS_KEY, JSON.stringify(data.masterPasswords));
+        }
+        window.dispatchEvent(new CustomEvent('admin_accounts_updated', {
+          detail: {
+            customAdmins: data.customAdmins,
+            masterPasswords: data.masterPasswords
+          }
+        }));
+      }
+    }
+  }, () => {});
+
+  // 5. Local CustomEvents, Cross-tab Storage Events & BroadcastChannel
   const handleLocalTrainingsEvent = (e: Event) => {
     const customEvent = e as CustomEvent<TrainingDocument[]>;
     if (customEvent.detail && Array.isArray(customEvent.detail)) {
@@ -405,6 +507,7 @@ export function subscribeToTrainingUpdates(
     unsubCatalog();
     unsubCollection();
     unsubCompletions();
+    unsubAdmins();
     window.removeEventListener('trainings_updated', handleLocalTrainingsEvent);
     window.removeEventListener('completions_updated', handleLocalCompletionsEvent);
     window.removeEventListener('storage', handleStorageEvent);
@@ -417,10 +520,11 @@ export function subscribeToTrainingUpdates(
  */
 export async function fetchRemoteTrainings(): Promise<{ trainings?: TrainingDocument[]; completions?: TrainingCompletion[] }> {
   try {
-    const [snapCat, snapCol, snapComp] = await Promise.all([
+    const [snapCat, snapCol, snapComp, snapAdmins] = await Promise.all([
       getDoc(TRAINING_CATALOG_DOC).catch(() => null),
       getDocs(TRAININGS_COLLECTION).catch(() => null),
-      getDoc(TRAINING_COMPLETIONS_DOC).catch(() => null)
+      getDoc(TRAINING_COMPLETIONS_DOC).catch(() => null),
+      getDoc(ADMIN_ACCOUNTS_DOC).catch(() => null)
     ]);
 
     const map = new Map<string, TrainingDocument>();
@@ -460,6 +564,18 @@ export async function fetchRemoteTrainings(): Promise<{ trainings?: TrainingDocu
       if (data && Array.isArray(data.completions)) {
         remoteCompletions = data.completions;
         localStorage.setItem(STORAGE_COMPLETIONS_KEY, JSON.stringify(remoteCompletions));
+      }
+    }
+
+    if (snapAdmins && snapAdmins.exists()) {
+      const data = snapAdmins.data();
+      if (data) {
+        if (Array.isArray(data.customAdmins)) {
+          localStorage.setItem(STORAGE_CUSTOM_ADMINS_KEY, JSON.stringify(data.customAdmins));
+        }
+        if (data.masterPasswords && typeof data.masterPasswords === 'object') {
+          localStorage.setItem(STORAGE_ADMIN_PASSWORDS_KEY, JSON.stringify(data.masterPasswords));
+        }
       }
     }
 

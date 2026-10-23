@@ -104,7 +104,7 @@ export const CountHistoryTab: React.FC<CountHistoryTabProps> = ({ db, onUpdateDb
   // Download PDF of filtered counts
   const handleDownloadPdfFiltered = () => {
     if (filteredCounts.length === 0) {
-      alert('İndirilecek sayım kaydı bulunmuyor.');
+      showSuccess('⚠️ İndirilecek sayım kaydı bulunmuyor.');
       return;
     }
     const branchName = selectedBranchId !== 'all' 
@@ -132,7 +132,7 @@ export const CountHistoryTab: React.FC<CountHistoryTabProps> = ({ db, onUpdateDb
     recordsToArchive?: any[]
   ) => {
     if (!canDelete) {
-      alert('Yetki Kısıtlaması: Geçmiş sayımları silme yetkiniz bulunmamaktadır. Lütfen yöneticiler (O.BAS / T.CESUR) ile iletişime geçiniz.');
+      showSuccess('⚠️ Yetki Kısıtlaması: Geçmiş sayımları silme yetkiniz bulunmamaktadır. Lütfen yöneticiler (O.BAS / T.CESUR) ile iletişime geçiniz.');
       return;
     }
 
@@ -214,7 +214,7 @@ export const CountHistoryTab: React.FC<CountHistoryTabProps> = ({ db, onUpdateDb
     const branch = db.branches.find(b => b.id === branchId);
     const recordsForBranch = db.counts.filter(c => c.branchId === branchId);
     if (recordsForBranch.length === 0) {
-      alert(`"${branch?.name}" için kayıtlı sayım bulunmuyor.`);
+      showSuccess(`⚠️ "${branch?.name}" için kayıtlı sayım bulunmuyor.`);
       return;
     }
 
@@ -240,7 +240,7 @@ export const CountHistoryTab: React.FC<CountHistoryTabProps> = ({ db, onUpdateDb
   // Clear all counts globally
   const handleClearAllCounts = () => {
     if (db.counts.length === 0) {
-      alert('Sistemde silinecek sayım verisi bulunmuyor.');
+      showSuccess('⚠️ Sistemde silinecek sayım verisi bulunmuyor.');
       return;
     }
 

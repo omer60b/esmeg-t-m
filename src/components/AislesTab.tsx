@@ -13,6 +13,17 @@ export const AislesTab: React.FC<AislesTabProps> = ({ db, onUpdateDb }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [feedback, setFeedback] = useState('');
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
 
   const showFeedback = (msg: string) => {
     setFeedback(msg);
@@ -20,18 +31,24 @@ export const AislesTab: React.FC<AislesTabProps> = ({ db, onUpdateDb }) => {
   };
 
   const handleRestoreOfficialAisles = () => {
-    if (!window.confirm('Tüm reyonları resmi 15 reyon listesiyle (Aksesuar Grubu dahil) güncellemek istediğinize emin misiniz?')) return;
-    onUpdateDb(prev => ({
-      ...prev,
-      aisles: defaultAisles
-    }));
-    showFeedback('Resmi 15 reyon listesi başarıyla yüklendi.');
+    setConfirmModal({
+      isOpen: true,
+      title: 'Resmi 15 Reyonu Geri Yükle',
+      message: 'Tüm reyonları resmi 15 reyon listesiyle (Aksesuar Grubu dahil) güncellemek istediğinize emin misiniz?',
+      onConfirm: () => {
+        onUpdateDb(prev => ({
+          ...prev,
+          aisles: defaultAisles
+        }));
+        showFeedback('Resmi 15 reyon listesi başarıyla yüklendi.');
+      }
+    });
   };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      alert('Lütfen reyon adını doldurunuz.');
+      showFeedback('⚠️ Lütfen reyon adını doldurunuz.');
       return;
     }
 
@@ -70,14 +87,18 @@ export const AislesTab: React.FC<AislesTabProps> = ({ db, onUpdateDb }) => {
     const aisle = db.aisles.find(a => a.id === id);
     if (!aisle) return;
 
-    const conf = window.confirm(`"${aisle.name}" reyonunu silmek istediğinize emin misiniz?`);
-    if (!conf) return;
-
-    onUpdateDb(prev => ({
-      ...prev,
-      aisles: prev.aisles.filter(a => a.id !== id)
-    }));
-    showFeedback('Reyon silindi.');
+    setConfirmModal({
+      isOpen: true,
+      title: 'Reyonu Sil',
+      message: `"${aisle.name}" reyonunu silmek istediğinize emin misiniz?`,
+      onConfirm: () => {
+        onUpdateDb(prev => ({
+          ...prev,
+          aisles: prev.aisles.filter(a => a.id !== id)
+        }));
+        showFeedback('Reyon silindi.');
+      }
+    });
   };
 
   const resetForm = () => {
@@ -224,6 +245,47 @@ export const AislesTab: React.FC<AislesTabProps> = ({ db, onUpdateDb }) => {
           </table>
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 border border-slate-200 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-indigo-100 text-indigo-600 rounded-2xl shrink-0">
+                <Tags className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base">
+                  {confirmModal.title}
+                </h3>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  {confirmModal.message}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const fn = confirmModal.onConfirm;
+                  setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                  fn();
+                }}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition cursor-pointer"
+              >
+                Onayla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

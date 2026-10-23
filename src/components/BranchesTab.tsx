@@ -27,6 +27,17 @@ export const BranchesTab: React.FC<BranchesTabProps> = ({ db, onUpdateDb }) => {
   const [feedback, setFeedback] = useState('');
   const [isProcessingExcel, setIsProcessingExcel] = useState(false);
   const [excelFeedback, setExcelFeedback] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
 
   const showFeedback = (msg: string) => {
     setFeedback(msg);
@@ -36,7 +47,7 @@ export const BranchesTab: React.FC<BranchesTabProps> = ({ db, onUpdateDb }) => {
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !code.trim()) {
-      alert('Lütfen mağaza adı ve mağaza kodunu doldurunuz.');
+      showFeedback('⚠️ Lütfen mağaza adı ve mağaza kodunu doldurunuz.');
       return;
     }
 
@@ -95,18 +106,22 @@ export const BranchesTab: React.FC<BranchesTabProps> = ({ db, onUpdateDb }) => {
     const branch = db.branches.find(b => b.id === id);
     if (!branch) return;
 
-    const conf = window.confirm(`"${branch.name}" mağazasını silmek istediğinize emin misiniz?`);
-    if (!conf) return;
-
-    onUpdateDb(prev => ({
-      ...prev,
-      branches: prev.branches.filter(b => b.id !== id),
-      users: prev.users.filter(u => u.branchId !== id),
-      assignments: prev.assignments.filter(a => a.branchId !== id),
-      counts: prev.counts.filter(c => c.branchId !== id),
-      evaluations: prev.evaluations.filter(e => e.branchId !== id)
-    }));
-    showFeedback('Mağaza ve ilişkili kayıtlar silindi.');
+    setConfirmModal({
+      isOpen: true,
+      title: 'Mağazayı Sil',
+      message: `"${branch.name}" mağazasını ve ilişkili sayım/atama kayıtlarını silmek istediğinize emin misiniz?`,
+      onConfirm: () => {
+        onUpdateDb(prev => ({
+          ...prev,
+          branches: prev.branches.filter(b => b.id !== id),
+          users: prev.users.filter(u => u.branchId !== id),
+          assignments: prev.assignments.filter(a => a.branchId !== id),
+          counts: prev.counts.filter(c => c.branchId !== id),
+          evaluations: prev.evaluations.filter(e => e.branchId !== id)
+        }));
+        showFeedback('Mağaza ve ilişkili kayıtlar silindi.');
+      }
+    });
   };
 
   const resetForm = () => {
@@ -134,7 +149,7 @@ export const BranchesTab: React.FC<BranchesTabProps> = ({ db, onUpdateDb }) => {
         const rows: any[] = XLSX.utils.sheet_to_json(ws);
 
         if (!rows || rows.length === 0) {
-          alert('Excel dosyasında veri bulunamadı.');
+          showFeedback('⚠️ Excel dosyasında veri bulunamadı.');
           setIsProcessingExcel(false);
           return;
         }
@@ -230,7 +245,7 @@ export const BranchesTab: React.FC<BranchesTabProps> = ({ db, onUpdateDb }) => {
         showFeedback(`Excel ile ${addedCount + updatedCount} şube ve kullanıcıları başarıyla aktarıldı.`);
       } catch (err: any) {
         console.error(err);
-        alert('Excel dosyası okunurken hata oluştu: ' + (err.message || 'Geçersiz format'));
+        showFeedback('⚠️ Excel dosyası okunurken hata oluştu: ' + (err.message || 'Geçersiz format'));
       } finally {
         setIsProcessingExcel(false);
         // Reset file input
@@ -478,6 +493,47 @@ export const BranchesTab: React.FC<BranchesTabProps> = ({ db, onUpdateDb }) => {
           </table>
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 border border-slate-200 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-rose-100 text-rose-600 rounded-2xl shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base">
+                  {confirmModal.title}
+                </h3>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  {confirmModal.message}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const fn = confirmModal.onConfirm;
+                  setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                  fn();
+                }}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md transition cursor-pointer"
+              >
+                Evet, Sil
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

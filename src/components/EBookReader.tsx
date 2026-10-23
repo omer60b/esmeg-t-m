@@ -45,7 +45,8 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
       const target = trainings.find(t => t.id === initialTrainingId);
       if (target) {
         setSelectedCategory(target.category);
-        const idxInFiltered = visibleBooks.findIndex(t => t.id === initialTrainingId);
+        const categoryBooks = trainings.filter(t => t.category === target.category);
+        const idxInFiltered = categoryBooks.findIndex(t => t.id === initialTrainingId);
         if (idxInFiltered >= 0) setCurrentIndex(idxInFiltered);
       }
     }
@@ -254,7 +255,7 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
               İçindekiler Dizini
             </span>
             <span className="text-[11px] font-mono text-slate-400">
-              {trainings.length} Doküman
+              {visibleBooks.length} Doküman
             </span>
           </div>
 
@@ -273,14 +274,14 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
           {/* Chapter Links */}
           <div className="space-y-1.5 max-h-[640px] overflow-y-auto pr-1">
             {filteredTOC.map((t, idx) => {
-              const isSelected = trainings[currentIndex]?.id === t.id;
+              const isSelected = currentBook?.id === t.id;
               const isBI = t.category === 'bilgi-islem';
 
               return (
                 <button
                   key={t.id}
                   onClick={() => {
-                    const originalIdx = trainings.findIndex(orig => orig.id === t.id);
+                    const originalIdx = visibleBooks.findIndex(orig => orig.id === t.id);
                     if (originalIdx >= 0) setCurrentIndex(originalIdx);
                   }}
                   className={`w-full text-left p-2.5 rounded-xl text-xs transition border flex items-start gap-2.5 ${

@@ -62,12 +62,23 @@ export const UsersTab: React.FC<UsersTabProps> = ({ db, onUpdateDb, currentUser 
   });
 
   const [feedback, setFeedback] = useState('');
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
 
   const isSuperAdmin = currentUser?.isSuperAdmin || currentUser?.username.toUpperCase() === 'O.BAS' || currentUser?.username.toUpperCase() === 'T.CESUR';
 
   const showFeedback = (msg: string) => {
     setFeedback(msg);
-    setTimeout(() => setFeedback(''), 3000);
+    setTimeout(() => setFeedback(''), 3500);
   };
 
   const handleTogglePermission = (permKey: keyof UserPermissions) => {
@@ -129,17 +140,17 @@ export const UsersTab: React.FC<UsersTabProps> = ({ db, onUpdateDb, currentUser 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim()) {
-      alert('Kullanıcı adı zorunludur.');
+      showFeedback('⚠️ Kullanıcı adı zorunludur.');
       return;
     }
 
     if (role === 'admin' && !editingId && !adminPassword.trim()) {
-      alert('Yönetici kullanıcısı için şifre belirlemeniz gerekmektedir.');
+      showFeedback('⚠️ Yönetici kullanıcısı için şifre belirlemeniz gerekmektedir.');
       return;
     }
 
     if (role === 'store' && !branchId) {
-      alert('Mağaza personeli için bir şube seçmelisiniz.');
+      showFeedback('⚠️ Mağaza personeli için bir şube seçmelisiniz.');
       return;
     }
 
@@ -183,7 +194,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({ db, onUpdateDb, currentUser 
     } else {
       // Check unique username
       if (db.users.some(u => u.username.toLowerCase() === username.trim().toLowerCase())) {
-        alert('Bu kullanıcı adı sistemde zaten kayıtlıdır.');
+        showFeedback('⚠️ Bu kullanıcı adı sistemde zaten kayıtlıdır.');
         return;
       }
 
@@ -244,17 +255,22 @@ export const UsersTab: React.FC<UsersTabProps> = ({ db, onUpdateDb, currentUser 
     if (!targetUser) return;
 
     if (targetUser.username.toUpperCase() === 'O.BAS' || targetUser.username.toUpperCase() === 'T.CESUR' || targetUser.isSuperAdmin) {
-      alert('En yetkili yönetici (O.BAS / T.CESUR) hesabı silinemez!');
+      showFeedback('⚠️ En yetkili yönetici (O.BAS / T.CESUR) hesabı silinemez!');
       return;
     }
 
-    if (!confirm(`"${targetUser.fullName || targetUser.username}" kullanıcısını silmek istediğinize emin misiniz?`)) return;
-
-    onUpdateDb(prev => ({
-      ...prev,
-      users: prev.users.filter(u => u.id !== id)
-    }));
-    showFeedback('Kullanıcı başarıyla silindi.');
+    setConfirmModal({
+      isOpen: true,
+      title: 'Kullanıcıyı Sil',
+      message: `"${targetUser.fullName || targetUser.username}" kullanıcısını silmek istediğinize emin misiniz?`,
+      onConfirm: () => {
+        onUpdateDb(prev => ({
+          ...prev,
+          users: prev.users.filter(u => u.id !== id)
+        }));
+        showFeedback('Kullanıcı başarıyla silindi.');
+      }
+    });
   };
 
   const resetForm = () => {
@@ -728,6 +744,47 @@ export const UsersTab: React.FC<UsersTabProps> = ({ db, onUpdateDb, currentUser 
           </table>
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 border border-slate-200 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-rose-100 text-rose-600 rounded-2xl shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base">
+                  {confirmModal.title}
+                </h3>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  {confirmModal.message}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const fn = confirmModal.onConfirm;
+                  setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                  fn();
+                }}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md transition cursor-pointer"
+              >
+                Evet, Sil
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

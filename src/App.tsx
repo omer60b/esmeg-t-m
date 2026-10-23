@@ -13,6 +13,8 @@ import {
   resetTrainingsToDefault,
   getStoredCompletions, 
   recordTrainingCompletion, 
+  clearAllCompletions,
+  deleteTrainingCompletion,
   subscribeToTrainingUpdates,
   fetchRemoteTrainings
 } from './services/trainingStorage';
@@ -132,7 +134,7 @@ export default function App() {
       if (remote.trainings && remote.trainings.length > 0) {
         setTrainings(remote.trainings);
       }
-      if (remote.completions && remote.completions.length > 0) {
+      if (Array.isArray(remote.completions)) {
         setCompletions(remote.completions);
       }
     });
@@ -221,6 +223,16 @@ export default function App() {
     setCompletions(getStoredCompletions());
   };
 
+  const handleClearCompletions = async () => {
+    await clearAllCompletions();
+    setCompletions([]);
+  };
+
+  const handleDeleteCompletion = async (completionId: string) => {
+    const updated = await deleteTrainingCompletion(completionId);
+    setCompletions(updated);
+  };
+
   // Stock Database update handler
   const handleUpdateDb = (updater: (prev: AppDatabase) => AppDatabase) => {
     setDb(prev => {
@@ -273,6 +285,7 @@ export default function App() {
             isAdmin={isAdmin}
             setIsAdmin={setIsAdmin}
             onOpenAdminAuth={() => setShowAdminAuthModal(true)}
+            onSwitchToSayim={() => setSystemMode('sayim')}
             totalCount={trainings.length}
             bilgiIslemCount={bilgiIslemCount}
             depocuCount={depocuCount}
@@ -348,7 +361,8 @@ export default function App() {
                   onDeleteTraining={handleDeleteTraining}
                   onOpenTrainingDetail={handleOpenTrainingDetail}
                   onClose={() => setTrainingActiveTab('catalog')}
-                  onClearCompletions={() => setCompletions([])}
+                  onClearCompletions={handleClearCompletions}
+                  onDeleteCompletion={handleDeleteCompletion}
                   onResetTrainings={handleResetTrainings}
                   initialVideoUrl={pendingAdminVideoUrl}
                   onClearInitialVideoUrl={() => setPendingAdminVideoUrl(null)}

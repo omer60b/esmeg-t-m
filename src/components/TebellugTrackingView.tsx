@@ -226,6 +226,7 @@ export const TebellugTrackingView: React.FC<TebellugTrackingViewProps> = ({
   const [examSubmitted, setExamSubmitted] = useState(false);
   const [examScore, setExamScore] = useState(0);
   const [generatedCertificate, setGeneratedCertificate] = useState<TrainingCompletion | null>(null);
+  const [examErrorMsg, setExamErrorMsg] = useState<string | null>(null);
 
   // Start the 5-Question Exam based on active category
   const handleStartExam = () => {
@@ -267,15 +268,17 @@ export const TebellugTrackingView: React.FC<TebellugTrackingViewProps> = ({
     setExamSubmitted(false);
     setExamScore(0);
     setGeneratedCertificate(null);
+    setExamErrorMsg(null);
     setShowExamModal(true);
   };
 
   // Submit Exam
   const handleSubmitExam = () => {
     if (Object.keys(userAnswers).length < examQuestions.length) {
-      alert('Lütfen tüm 5 soruyu da cevaplayınız!');
+      setExamErrorMsg(`Lütfen sınavı tamamlamadan önce tüm ${examQuestions.length} soruyu da cevaplayınız!`);
       return;
     }
+    setExamErrorMsg(null);
 
     let correctCount = 0;
     examQuestions.forEach((q, idx) => {
@@ -926,27 +929,35 @@ export const TebellugTrackingView: React.FC<TebellugTrackingViewProps> = ({
 
             {/* Modal Footer */}
             {!examSubmitted && (
-              <div className="p-4 bg-slate-50 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between shrink-0">
-                <span className="text-xs text-slate-500">
-                  {Object.keys(userAnswers).length} / {examQuestions.length} soru işaretlendi
-                </span>
+              <div className="p-4 bg-slate-50 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 space-y-2 shrink-0">
+                {examErrorMsg && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-200 text-xs font-bold flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>{examErrorMsg}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-500">
+                    {Object.keys(userAnswers).length} / {examQuestions.length} soru işaretlendi
+                  </span>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowExamModal(false)}
-                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
-                  >
-                    Vazgeç
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSubmitExam}
-                    className="px-6 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 shadow cursor-pointer"
-                  >
-                    <span>Sınavı Tamamla ve Değerlendir</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowExamModal(false)}
+                      className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                    >
+                      Vazgeç
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSubmitExam}
+                      className="px-6 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 shadow cursor-pointer"
+                    >
+                      <span>Sınavı Tamamla ve Değerlendir</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

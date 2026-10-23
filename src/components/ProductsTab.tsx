@@ -55,6 +55,19 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({ db, onUpdateDb }) => {
   const [groupByAisle, setGroupByAisle] = useState<boolean>(true);
 
   const [feedback, setFeedback] = useState('');
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmLabel: 'Onayla',
+    onConfirm: () => {}
+  });
 
   const showFeedback = (msg: string) => {
     setFeedback(msg);
@@ -65,7 +78,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({ db, onUpdateDb }) => {
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!barcode.trim() || !stockCode.trim() || !description.trim() || !aisleId) {
-      alert('Lütfen barkod, ürün kodu, ürün adı ve reyon alanlarını doldurunuz.');
+      showFeedback('⚠️ Lütfen barkod, ürün kodu, ürün adı ve reyon alanlarını doldurunuz.');
       return;
     }
 
@@ -158,7 +171,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({ db, onUpdateDb }) => {
   // Process Excel File with Image 2 format (Barkod, Ürün Kodu, Ürün Adı, Renk Adı, Envanter Miktarı)
   const handleProcessExcel = () => {
     if (!excelFile) {
-      alert('Lütfen bir Excel (.xlsx, .xls) veya CSV dosyası seçin.');
+      showFeedback('⚠️ Lütfen bir Excel (.xlsx, .xls) veya CSV dosyası seçin.');
       return;
     }
 
@@ -175,7 +188,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({ db, onUpdateDb }) => {
         const rows: any[] = XLSX.utils.sheet_to_json(sheet);
 
         if (!rows || rows.length === 0) {
-          alert('Seçilen Excel dosyasında ürün satırı bulunamadı.');
+          showFeedback('⚠️ Seçilen Excel dosyasında ürün satırı bulunamadı.');
           setIsProcessing(false);
           return;
         }
@@ -314,7 +327,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({ db, onUpdateDb }) => {
         setExcelFile(null);
       } catch (err: any) {
         console.error(err);
-        alert('Excel dosyası işlenirken hata oluştu: ' + (err.message || 'Geçersiz format'));
+        showFeedback('⚠️ Excel dosyası işlenirken hata oluştu: ' + (err.message || 'Geçersiz format'));
       } finally {
         setIsProcessing(false);
       }
@@ -328,38 +341,48 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({ db, onUpdateDb }) => {
     const prod = db.products.find(p => p.id === id);
     if (!prod) return;
 
-    if (!confirm(`"${prod.description}" ürününü ve tüm mağaza atamalarını silmek istediğinize emin misiniz?`)) return;
+    setConfirmModal({
+      isOpen: true,
+      title: 'Ürünü Sil',
+      message: `"${prod.description}" ürününü ve tüm mağaza atamalarını silmek istediğinize emin misiniz?`,
+      confirmLabel: 'Evet, Ürünü Sil',
+      onConfirm: () => {
+        onUpdateDb(prev => ({
+          ...prev,
+          products: prev.products.filter(p => Number(p.id) !== Number(id)),
+          assignments: prev.assignments.filter(a => Number(a.productId) !== Number(id)),
+          counts: prev.counts.filter(c => Number(c.productId) !== Number(id))
+        }));
 
-    onUpdateDb(prev => ({
-      ...prev,
-      products: prev.products.filter(p => Number(p.id) !== Number(id)),
-      assignments: prev.assignments.filter(a => Number(a.productId) !== Number(id)),
-      counts: prev.counts.filter(c => Number(c.productId) !== Number(id))
-    }));
-
-    deleteProductServer(id).catch(() => {});
-    showFeedback('Ürün sistemden ve merkezi sunucudan kalıcı olarak silindi.');
+        deleteProductServer(id).catch(() => {});
+        showFeedback('Ürün sistemden ve merkezi sunucudan kalıcı olarak silindi.');
+      }
+    });
   };
 
   // Clear all products completely to start with a fresh slate
-  const handleClearAllProducts = async () => {
-    if (!confirm('DİKKAT: Sistemdeki tüm ürün listesi ve mağaza atamaları tamamen temizlenecektir. Mağazaların ekranları da temizlenecek ve sadece yöneticinin yeni atayacağı ürünler görünecektir. Onaylıyor musunuz?')) {
-      return;
-    }
+  const handleClearAllProducts = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Tüm Ürün Listesini Temizle (Sıfırla)',
+      message: 'DİKKAT: Sistemdeki tüm ürün listesi ve mağaza atamaları tamamen temizlenecektir. Mağazaların ekranları da temizlenecek ve sadece yöneticinin yeni atayacağı ürünler görünecektir. Onaylıyor musunuz?',
+      confirmLabel: 'Evet, Tüm Listeyi Temizle',
+      onConfirm: async () => {
+        onUpdateDb(prev => ({
+          ...prev,
+          products: [],
+          assignments: [],
+          counts: [],
+          branchStatuses: []
+        }));
 
-    onUpdateDb(prev => ({
-      ...prev,
-      products: [],
-      assignments: [],
-      counts: [],
-      branchStatuses: []
-    }));
+        try {
+          await clearAllProductsServer();
+        } catch {}
 
-    try {
-      await clearAllProductsServer();
-    } catch {}
-
-    showFeedback('Tüm ürün listesi temizlendi. Artık sadece yöneticinin yeni atadığı ürünler mağazaların kullanıcılarına düşecektir.');
+        showFeedback('Tüm ürün listesi temizlendi. Artık sadece yöneticinin yeni atadığı ürünler mağazaların kullanıcılarına düşecektir.');
+      }
+    });
   };
 
   // Filtered & Grouped Products
@@ -989,6 +1012,47 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({ db, onUpdateDb }) => {
           </div>
         )}
       </div>
+
+      {/* Confirmation Modal */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 border border-slate-200 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-rose-100 text-rose-600 rounded-2xl shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base">
+                  {confirmModal.title}
+                </h3>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  {confirmModal.message}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const fn = confirmModal.onConfirm;
+                  setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                  fn();
+                }}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md transition cursor-pointer"
+              >
+                {confirmModal.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
