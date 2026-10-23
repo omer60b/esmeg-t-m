@@ -6,14 +6,10 @@ import {
   ShieldCheck, 
   Settings, 
   Search, 
-  User as UserIcon, 
-  Building2, 
   LogOut, 
   LogIn, 
-  Sparkles,
   Layers,
-  FileCheck2,
-  Boxes
+  FileCheck2
 } from 'lucide-react';
 import { TrainingCategory } from '../types';
 import { officialEsmeBranches } from '../mockData';
@@ -32,7 +28,6 @@ interface TrainingHeaderProps {
   isAdmin: boolean;
   setIsAdmin: (val: boolean) => void;
   onOpenAdminAuth: () => void;
-  onSwitchToSayim?: () => void;
   totalCount?: number;
   bilgiIslemCount?: number;
   depocuCount?: number;
@@ -52,7 +47,6 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
   isAdmin,
   setIsAdmin,
   onOpenAdminAuth,
-  onSwitchToSayim,
   totalCount = 11,
   bilgiIslemCount = 7,
   depocuCount = 4
@@ -73,15 +67,6 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
           </span>
         </div>
         <div className="flex items-center space-x-3 text-[11px]">
-          {onSwitchToSayim && (
-            <button
-              onClick={onSwitchToSayim}
-              className="bg-indigo-600/90 hover:bg-indigo-500 text-white px-2.5 py-0.5 rounded border border-indigo-400/50 flex items-center gap-1 font-bold transition shadow-xs cursor-pointer"
-              title="Stok & Kör Sayım Portalına Geçiş Yap"
-            >
-              <Boxes className="w-3.5 h-3.5" /> Stok & Sayım Portalı
-            </button>
-          )}
           <span className="hidden md:inline text-rose-100">
             Resmi Prosedürler & SOP Kılavuzları
           </span>

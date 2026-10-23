@@ -3,13 +3,10 @@ import { getAuth } from 'firebase/auth';
 import { 
   getFirestore, 
   doc, 
-  setDoc, 
-  getDoc, 
-  onSnapshot, 
+  deleteDoc,
   getDocFromServer 
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { AppDatabase } from '../types';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
@@ -65,68 +62,29 @@ async function testConnection() {
 }
 testConnection();
 
-const APP_DATA_DOC = doc(db, 'appData', 'central_db');
-
 /**
- * Save state directly to Firestore in real time
+ * Purges any legacy Stock & Blind Counting data from localStorage and Firestore
  */
-export async function syncToFirestore(data: AppDatabase): Promise<boolean> {
-  const pathForWrite = 'appData/central_db';
+export async function purgeLegacyStockData(): Promise<void> {
   try {
-    // Safely strip undefined values to prevent Firestore setDoc invalid data errors
-    const cleanData = JSON.parse(JSON.stringify(data));
-    const payload = {
-      ...cleanData,
-      updatedAt: new Date().toISOString()
-    };
-    await setDoc(APP_DATA_DOC, payload);
-    return true;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, pathForWrite);
-    return false;
+    localStorage.removeItem('esme_stock_audit_v3_db');
+    localStorage.removeItem('esme_logged_stock_user');
+    localStorage.removeItem('esme_active_system_mode');
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('store_submission_status_')) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // ignore storage errors
   }
-}
 
-/**
- * Subscribe to real-time Firestore database updates
- */
-export function subscribeToFirestore(onDataUpdated: (data: AppDatabase) => void): () => void {
-  const pathForOnSnapshot = 'appData/central_db';
-  
-  const unsubscribe = onSnapshot(
-    APP_DATA_DOC,
-    (snapshot) => {
-      if (snapshot.exists()) {
-        const remoteData = snapshot.data() as AppDatabase;
-        if (remoteData && Array.isArray(remoteData.branches) && Array.isArray(remoteData.users)) {
-          onDataUpdated(remoteData);
-        }
-      }
-    },
-    (error) => {
-      handleFirestoreError(error, OperationType.GET, pathForOnSnapshot);
-    }
-  );
-
-  return unsubscribe;
-}
-
-/**
- * Fetch remote state once from Firestore
- */
-export async function fetchFirestoreData(): Promise<AppDatabase | null> {
-  const pathForGetDoc = 'appData/central_db';
   try {
-    const snap = await getDoc(APP_DATA_DOC);
-    if (snap.exists()) {
-      const data = snap.data() as AppDatabase;
-      if (data && Array.isArray(data.branches) && Array.isArray(data.users)) {
-        return data;
-      }
-    }
-    return null;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.GET, pathForGetDoc);
-    return null;
+    await deleteDoc(doc(db, 'appData', 'central_db'));
+  } catch {
+    // ignore if already deleted or offline
   }
 }
