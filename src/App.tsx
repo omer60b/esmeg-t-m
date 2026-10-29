@@ -249,14 +249,34 @@ export default function App() {
     setTrainings(getStoredTrainings());
   };
 
-  const handleQuickUpdateVideo = async (trainingId: string, videoUrl: string, videoTitle?: string) => {
+  const handleQuickUpdateVideo = async (
+    trainingId: string, 
+    videoUrl: string, 
+    videoTitle?: string,
+    videoDuration?: string
+  ) => {
+    const target = trainings.find(t => t.id === trainingId);
+    if (!target) return;
+    const trimmed = videoUrl.trim();
+    const updated: TrainingDocument = {
+      ...target,
+      videoType: trimmed ? 'link' : 'none',
+      videoUrl: trimmed,
+      videoTitle: videoTitle || target.videoTitle || target.title,
+      videoDuration: videoDuration || target.videoDuration || '05:00',
+      updatedAt: new Date().toISOString()
+    };
+    await upsertTraining(updated);
+    setTrainings(getStoredTrainings());
+  };
+
+  const handleDeleteVideo = async (trainingId: string) => {
     const target = trainings.find(t => t.id === trainingId);
     if (!target) return;
     const updated: TrainingDocument = {
       ...target,
-      videoType: 'link',
-      videoUrl: videoUrl.trim(),
-      videoTitle: videoTitle || target.videoTitle || target.title,
+      videoType: 'none',
+      videoUrl: '',
       updatedAt: new Date().toISOString()
     };
     await upsertTraining(updated);
@@ -485,6 +505,7 @@ export default function App() {
               setSelectedCategory={setSelectedCategory}
               onOpenTrainingDetail={handleOpenTrainingDetail}
               onQuickUpdateVideo={handleQuickUpdateVideo}
+              onDeleteVideo={handleDeleteVideo}
               onOpenAdminNewTraining={(videoSrc) => {
                 if (videoSrc) setPendingAdminVideoUrl(videoSrc);
                 if (!isAdmin) {
