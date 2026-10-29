@@ -5,10 +5,19 @@ import {
   TrainingPriority, 
   TrainingCompletion,
   TrainingChapter,
-  TrainingQuizQuestion
+  TrainingQuizQuestion,
+  Branch
 } from '../types';
 import { officialEsmeBranches } from '../mockData';
 import { syncAdminAccountsToFirestore } from '../services/trainingStorage';
+import { 
+  getStoredBranches, 
+  upsertBranch, 
+  deleteBranch, 
+  updateBranchPassword, 
+  resetAllBranchPasswords, 
+  resetBranchesToDefault 
+} from '../services/branchStorage';
 import { 
   Settings, 
   Plus, 
@@ -36,7 +45,11 @@ import {
   Key,
   RotateCcw,
   Check,
-  HelpCircle
+  HelpCircle,
+  Eye,
+  EyeOff,
+  MapPin,
+  Store
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -64,6 +77,12 @@ interface AdminTrainingPanelProps {
   onResetTrainings?: () => Promise<void> | void;
   initialVideoUrl?: string | null;
   onClearInitialVideoUrl?: () => void;
+  branches?: Branch[];
+  onSaveBranch?: (branch: Partial<Branch> & { name: string }) => Promise<void> | void;
+  onDeleteBranch?: (branchId: number) => Promise<void> | void;
+  onUpdateBranchPassword?: (branchId: number, password: string) => Promise<void> | void;
+  onResetBranchPasswords?: (password?: string) => Promise<void> | void;
+  onResetBranchesToDefault?: () => Promise<void> | void;
 }
 
 export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
@@ -77,9 +96,15 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
   onDeleteCompletion,
   onResetTrainings,
   initialVideoUrl,
-  onClearInitialVideoUrl
+  onClearInitialVideoUrl,
+  branches: propsBranches,
+  onSaveBranch,
+  onDeleteBranch,
+  onUpdateBranchPassword,
+  onResetBranchPasswords,
+  onResetBranchesToDefault
 }) => {
-  const [activeAdminTab, setActiveAdminTab] = useState<'trainings' | 'reports' | 'admins'>('trainings');
+  const [activeAdminTab, setActiveAdminTab] = useState<'trainings' | 'reports' | 'admins' | 'branches'>('trainings');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTraining, setEditingTraining] = useState<TrainingDocument | null>(null);
   const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -165,6 +190,186 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
   const [adminIsSuper, setAdminIsSuper] = useState(false);
   const [showPasswordsInTable, setShowPasswordsInTable] = useState(false);
   const [adminModalError, setAdminModalError] = useState<string | null>(null);
+
+  // Store Branches Management State (Admin Can Open, Edit, Set Passwords)
+  const [localBranches, setLocalBranches] = useState<Branch[]>(() => {
+    if (propsBranches && propsBranches.length > 0) return propsBranches;
+    return getStoredBranches();
+  });
+
+  useEffect(() => {
+    if (propsBranches && propsBranches.length > 0) {
+      setLocalBranches(propsBranches);
+    }
+  }, [propsBranches]);
+
+  useEffect(() => {
+    const handleBranchesSync = (e: Event) => {
+      const ce = e as CustomEvent;
+      if (ce.detail?.branches && Array.isArray(ce.detail.branches)) {
+        setLocalBranches(ce.detail.branches);
+      }
+    };
+    window.addEventListener('branches_updated', handleBranchesSync);
+    return () => window.removeEventListener('branches_updated', handleBranchesSync);
+  }, []);
+
+  const [branchSearch, setBranchSearch] = useState('');
+  const [branchFilter, setBranchFilter] = useState<'all' | 'custom' | 'default'>('all');
+  const [showBranchModal, setShowBranchModal] = useState(false);
+  const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
+  const [branchCodeInput, setBranchCodeInput] = useState('');
+  const [branchNameInput, setBranchNameInput] = useState('');
+  const [branchCityInput, setBranchCityInput] = useState('İstanbul');
+  const [branchPasswordInput, setBranchPasswordInput] = useState('1122');
+  const [showBranchPasswordText, setShowBranchPasswordText] = useState(false);
+  const [showAllStorePasswords, setShowAllStorePasswords] = useState(false);
+  const [branchModalError, setBranchModalError] = useState<string | null>(null);
+
+  // Quick Password Change Modal State
+  const [showQuickPasswordModal, setShowQuickPasswordModal] = useState(false);
+  const [quickPasswordBranch, setQuickPasswordBranch] = useState<Branch | null>(null);
+  const [quickPasswordValue, setQuickPasswordValue] = useState('1122');
+  const [showQuickPasswordText, setShowQuickPasswordText] = useState(false);
+
+  // Open modal in create branch mode
+  const handleOpenNewBranch = () => {
+    setEditingBranch(null);
+    const maxId = localBranches.reduce((max, b) => (b.id > max ? b.id : max), 0);
+    const nextCode = String(maxId + 1).padStart(3, '0');
+    setBranchCodeInput(nextCode);
+    setBranchNameInput('');
+    setBranchCityInput('İstanbul');
+    setBranchPasswordInput('1122');
+    setShowBranchPasswordText(false);
+    setBranchModalError(null);
+    setShowBranchModal(true);
+  };
+
+  // Open modal in edit branch mode
+  const handleOpenEditBranch = (branch: Branch) => {
+    setEditingBranch(branch);
+    setBranchCodeInput(branch.code);
+    setBranchNameInput(branch.name);
+    setBranchCityInput(branch.city || 'Merkez');
+    setBranchPasswordInput(branch.password || '1122');
+    setShowBranchPasswordText(false);
+    setBranchModalError(null);
+    setShowBranchModal(true);
+  };
+
+  // Save Branch (New or Edit)
+  const handleSaveBranchSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!branchNameInput.trim()) {
+      setBranchModalError('Lütfen mağaza adını yazınız.');
+      return;
+    }
+
+    const payload: Partial<Branch> & { name: string } = {
+      ...(editingBranch ? { id: editingBranch.id } : {}),
+      name: branchNameInput.trim(),
+      code: branchCodeInput.trim() || '001',
+      city: branchCityInput.trim() || 'Merkez',
+      password: branchPasswordInput.trim() || '1122'
+    };
+
+    if (onSaveBranch) {
+      await onSaveBranch(payload);
+    } else {
+      const updated = await upsertBranch(payload);
+      setLocalBranches(updated);
+    }
+
+    setShowBranchModal(false);
+    showNotice(
+      editingBranch
+        ? `"${payload.name}" mağazasının bilgileri ve şifresi başarıyla güncellendi.`
+        : `"${payload.name}" mağazası başarıyla açıldı ve sisteme eklendi (Giriş Şifresi: ${payload.password}).`
+    );
+  };
+
+  // Open quick password modal
+  const handleOpenQuickPassword = (branch: Branch) => {
+    setQuickPasswordBranch(branch);
+    setQuickPasswordValue(branch.password || '1122');
+    setShowQuickPasswordText(false);
+    setShowQuickPasswordModal(true);
+  };
+
+  // Save quick password
+  const handleSaveQuickPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickPasswordBranch) return;
+
+    const newPwd = quickPasswordValue.trim() || '1122';
+    if (onUpdateBranchPassword) {
+      await onUpdateBranchPassword(quickPasswordBranch.id, newPwd);
+    } else {
+      const updated = await updateBranchPassword(quickPasswordBranch.id, newPwd);
+      setLocalBranches(updated);
+    }
+
+    setShowQuickPasswordModal(false);
+    showNotice(`"${quickPasswordBranch.name}" mağazasının yeni giriş şifresi: ${newPwd}`);
+  };
+
+  // Delete Branch with in-app confirmation
+  const handleDeleteBranch = (branch: Branch) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: `${branch.name} Mağazasını Sil`,
+      message: `"${branch.name}" (${branch.code} - ${branch.city}) mağazası sistemden tamamen silinecektir. Bu mağazadaki personeller giriş yapamayacaktır. Onaylıyor musunuz?`,
+      confirmLabel: 'Evet, Mağazayı Sil',
+      onConfirm: async () => {
+        if (onDeleteBranch) {
+          await onDeleteBranch(branch.id);
+        } else {
+          const updated = await deleteBranch(branch.id);
+          setLocalBranches(updated);
+        }
+        showNotice(`"${branch.name}" mağazası sistemden silindi.`);
+      }
+    });
+  };
+
+  // Reset all branch passwords to 1122
+  const handleResetAllPasswordsPrompt = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Tüm Mağaza Şifrelerini 1122 Yap',
+      message: 'Sistemde kayıtlı olan tüm mağazaların portala giriş şifresi standart "1122" olarak ayarlanacaktır. Onaylıyor musunuz?',
+      confirmLabel: 'Evet, Tüm Şifreleri 1122 Yap',
+      onConfirm: async () => {
+        if (onResetBranchPasswords) {
+          await onResetBranchPasswords('1122');
+        } else {
+          const updated = await resetAllBranchPasswords('1122');
+          setLocalBranches(updated);
+        }
+        showNotice('Tüm mağazaların giriş şifresi 1122 olarak güncellendi.');
+      }
+    });
+  };
+
+  // Reset branches to default 35 official branches
+  const handleResetBranchesPrompt = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Mağazaları Fabrika Ayarlarına Sıfırla',
+      message: 'Özel açılan mağazalar silinecek ve sistem 35 resmi Esme şubesine (Varsayılan şifre: 1122) sıfırlanacaktır. Onaylıyor musunuz?',
+      confirmLabel: 'Evet, 35 Şubeye Sıfırla',
+      onConfirm: async () => {
+        if (onResetBranchesToDefault) {
+          await onResetBranchesToDefault();
+        } else {
+          const defaults = await resetBranchesToDefault();
+          setLocalBranches(defaults);
+        }
+        showNotice('Mağaza listesi 35 resmi Esme şubesine ve varsayılan şifrelere sıfırlandı.');
+      }
+    });
+  };
 
   // Form State for New/Edit Training
   const [formCategory, setFormCategory] = useState<TrainingCategory>('bilgi-islem');
@@ -633,6 +838,18 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
         >
           <Users className="w-4 h-4 text-amber-400" />
           Süper Yönetici & Yönetici Hesapları ({2 + customAdmins.length})
+        </button>
+
+        <button
+          onClick={() => setActiveAdminTab('branches')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+            activeAdminTab === 'branches'
+              ? 'bg-amber-600 text-white shadow-md'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Building2 className="w-4 h-4 text-amber-300" />
+          Mağaza Yönetimi & Şifreler ({localBranches.length})
         </button>
       </div>
 
@@ -1107,6 +1324,542 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
             </div>
           </div>
 
+        </div>
+      )}
+
+      {/* TAB 4: STORE BRANCH MANAGEMENT & PASSWORDS (MAĞAZA YÖNETİMİ & ŞİFRELER) */}
+      {activeAdminTab === 'branches' && (
+        <div className="space-y-6">
+          
+          {/* Header Action Bar */}
+          <div className="bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 text-white p-5 rounded-2xl border border-amber-800/40 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold mb-2 border border-amber-500/30">
+                <Building2 className="w-4 h-4 text-amber-400" />
+                Esme AVM Mağaza & Şube Yönetim Konsolu
+              </div>
+              <h3 className="text-xl font-extrabold">
+                Mağaza Açma, Düzenleme & Giriş Şifreleri
+              </h3>
+              <p className="text-xs text-slate-300 max-w-xl mt-1">
+                Yeni mağazalar tanımlayın, mağaza kodlarını ve isimlerini güncelleyin ve personellerin sisteme erişim şifrelerini belirleyin (Standart şifre: 1122).
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAllStorePasswords(!showAllStorePasswords)}
+                className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs flex items-center gap-1.5 border border-slate-700 transition cursor-pointer"
+                title="Tüm Mağaza Şifrelerini Göster / Gizle"
+              >
+                {showAllStorePasswords ? <EyeOff className="w-4 h-4 text-amber-400" /> : <Eye className="w-4 h-4 text-amber-400" />}
+                <span>{showAllStorePasswords ? 'Şifreleri Gizle' : 'Şifreleri Göster'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetAllPasswordsPrompt}
+                className="px-3.5 py-2.5 rounded-xl bg-amber-900/60 hover:bg-amber-800 border border-amber-700/60 text-amber-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                title="Tüm mağaza şifrelerini 1122 olarak eşitle"
+              >
+                <Key className="w-4 h-4 text-amber-400" />
+                <span>Tüm Şifreleri 1122 Yap</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenNewBranch}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-extrabold text-xs flex items-center gap-2 shadow-xl shadow-red-900/40 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Yeni Mağaza Aç</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Metrics Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+              <span className="text-[11px] font-bold text-slate-500 block mb-1">Toplam Faal Mağaza</span>
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-black text-slate-900 dark:text-white">{localBranches.length}</span>
+                <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center font-bold">
+                  <Building2 className="w-4 h-4" />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+              <span className="text-[11px] font-bold text-slate-500 block mb-1">Standart Şifreli (1122)</span>
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-black text-emerald-600">
+                  {localBranches.filter(b => !b.password || b.password === '1122').length}
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
+                  <Lock className="w-4 h-4" />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+              <span className="text-[11px] font-bold text-slate-500 block mb-1">Özel Şifre Tanımlı</span>
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-black text-amber-600">
+                  {localBranches.filter(b => b.password && b.password !== '1122').length}
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
+                  <Key className="w-4 h-4" />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+              <span className="text-[11px] font-bold text-slate-500 block mb-1">Hizmet Verilen Şehir</span>
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-black text-slate-900 dark:text-white">
+                  {new Set(localBranches.map(b => b.city || 'Merkez')).size}
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold">
+                  <MapPin className="w-4 h-4" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Search & Filter Bar */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={branchSearch}
+                onChange={(e) => setBranchSearch(e.target.value)}
+                placeholder="Mağaza adı, şube kodu (Örn: 013, Güneşli) veya şehir ara..."
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs rounded-xl pl-9 pr-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+              {branchSearch && (
+                <button
+                  type="button"
+                  onClick={() => setBranchSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+                >
+                  Temizle
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+              <button
+                type="button"
+                onClick={() => setBranchFilter('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                  branchFilter === 'all'
+                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                Tümü ({localBranches.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBranchFilter('default')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                  branchFilter === 'default'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                1122 Şifreli ({localBranches.filter(b => !b.password || b.password === '1122').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBranchFilter('custom')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                  branchFilter === 'custom'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                Özel Şifreli ({localBranches.filter(b => b.password && b.password !== '1122').length})
+              </button>
+            </div>
+          </div>
+
+          {/* Branches Table */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <h4 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                <Store className="w-4 h-4 text-amber-600" />
+                Kayıtlı Mağazalar ve Giriş Şifre Listesi
+              </h4>
+              <span className="text-xs text-slate-400">
+                {localBranches.filter(b => {
+                  if (branchFilter === 'default' && b.password && b.password !== '1122') return false;
+                  if (branchFilter === 'custom' && (!b.password || b.password === '1122')) return false;
+                  if (branchSearch) {
+                    const q = branchSearch.toLowerCase();
+                    return b.name.toLowerCase().includes(q) || b.code.toLowerCase().includes(q) || (b.city && b.city.toLowerCase().includes(q));
+                  }
+                  return true;
+                }).length} Mağaza Listeleniyor
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-700">
+                  <tr>
+                    <th className="p-3.5">Şube Kodu</th>
+                    <th className="p-3.5">Mağaza Adı</th>
+                    <th className="p-3.5">Şehir / Bölge</th>
+                    <th className="p-3.5">Tür</th>
+                    <th className="p-3.5">Mağaza Giriş Şifresi</th>
+                    <th className="p-3.5 text-right">İşlemler & Şifre</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {localBranches
+                    .filter(b => {
+                      if (branchFilter === 'default' && b.password && b.password !== '1122') return false;
+                      if (branchFilter === 'custom' && (!b.password || b.password === '1122')) return false;
+                      if (branchSearch) {
+                        const q = branchSearch.toLowerCase();
+                        return b.name.toLowerCase().includes(q) || b.code.toLowerCase().includes(q) || (b.city && b.city.toLowerCase().includes(q));
+                      }
+                      return true;
+                    })
+                    .map(branch => {
+                      const isDefaultPwd = !branch.password || branch.password === '1122';
+                      return (
+                        <tr key={branch.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+                          <td className="p-3.5 font-mono font-bold text-red-600 dark:text-red-400">
+                            {branch.code}
+                          </td>
+                          <td className="p-3.5 font-bold text-slate-900 dark:text-white">
+                            {branch.name}
+                          </td>
+                          <td className="p-3.5 text-slate-600 dark:text-slate-300">
+                            <span className="inline-flex items-center gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              {branch.city || 'Merkez'}
+                            </span>
+                          </td>
+                          <td className="p-3.5">
+                            {branch.isCustom ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                Yeni Eklenen
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                Resmi Şube
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3.5">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-xs bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white">
+                                {showAllStorePasswords ? (branch.password || '1122') : '••••'}
+                              </span>
+                              {isDefaultPwd ? (
+                                <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1">
+                                  <Check className="w-3 h-3" /> Standart (1122)
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-300/40">
+                                  Özel Şifre
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenQuickPassword(branch)}
+                                className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:hover:bg-amber-900 text-amber-800 dark:text-amber-200 font-bold transition flex items-center gap-1 cursor-pointer"
+                                title="Bu mağazanın şifresini belirle"
+                              >
+                                <Key className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                                <span>Şifre Belirle</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditBranch(branch)}
+                                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition cursor-pointer"
+                                title="Mağaza bilgilerini düzenle"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteBranch(branch)}
+                                className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900 text-rose-600 dark:text-rose-400 transition cursor-pointer"
+                                title="Mağazayı sil"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Reset Branches Card */}
+          <div className="bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+              <h5 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-amber-600" />
+                Mağazaları ve Şifreleri Fabrika Ayarlarına Döndür
+              </h5>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Özel açılan mağazaları temizler ve tüm 35 resmi Esme şubesini standart 1122 şifresiyle geri yükler.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleResetBranchesPrompt}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>35 Resmi Şubeye Sıfırla</span>
+            </button>
+          </div>
+
+        </div>
+      )}
+
+      {/* CREATE & EDIT BRANCH MODAL */}
+      {showBranchModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl relative">
+            <button
+              type="button"
+              onClick={() => setShowBranchModal(false)}
+              className="absolute right-4 top-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-600">
+                {editingBranch ? <Edit3 className="w-6 h-6" /> : <Store className="w-6 h-6" />}
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+                  {editingBranch ? 'Mağaza Bilgilerini & Şifresini Düzenle' : 'Yeni Esme Mağazası Aç'}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Mağaza tanımlama, şube kodu ve giriş şifresi belirleme
+                </p>
+              </div>
+            </div>
+
+            {branchModalError && (
+              <div className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold">
+                {branchModalError}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveBranchSubmit} className="space-y-4 text-xs">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-1">
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Şube Kodu:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={branchCodeInput}
+                    onChange={(e) => setBranchCodeInput(e.target.value)}
+                    placeholder="Örn: 037"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono font-bold text-slate-900 dark:text-white uppercase"
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Şehir / İl:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={branchCityInput}
+                    onChange={(e) => setBranchCityInput(e.target.value)}
+                    placeholder="Örn: İstanbul, Ankara"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-semibold text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  Mağaza Adı:
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={branchNameInput}
+                  onChange={(e) => setBranchNameInput(e.target.value)}
+                  placeholder="Örn: Bakırköy Mağaza"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-bold text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block">
+                    Mağaza Giriş Şifresi:
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBranchPasswordInput('1122')}
+                      className="text-[11px] text-emerald-600 hover:underline font-semibold cursor-pointer"
+                    >
+                      1122 Yap
+                    </button>
+                    <span className="text-slate-300 dark:text-slate-700">•</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowBranchPasswordText(!showBranchPasswordText)}
+                      className="text-[11px] text-amber-600 hover:underline font-semibold cursor-pointer"
+                    >
+                      {showBranchPasswordText ? 'Gizle' : 'Göster'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <input
+                    type={showBranchPasswordText ? 'text' : 'password'}
+                    required
+                    value={branchPasswordInput}
+                    onChange={(e) => setBranchPasswordInput(e.target.value)}
+                    placeholder="Mağaza giriş şifresi (Örn: 1122)"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono font-bold pr-10 text-slate-900 dark:text-white tracking-wider"
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                    <Key className="w-4 h-4 text-amber-500" />
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                  Bu mağazanın personelleri portala girerken bu şifreyi yazacaktır (Varsayılan: 1122).
+                </p>
+              </div>
+
+              <div className="pt-4 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowBranchModal(false)}
+                  className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 font-bold cursor-pointer"
+                >
+                  İptal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white font-bold flex items-center gap-1.5 shadow cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{editingBranch ? 'Mağazayı Güncelle' : 'Mağazayı Aç ve Kaydet'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK PASSWORD MODAL */}
+      {showQuickPasswordModal && quickPasswordBranch && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative">
+            <button
+              type="button"
+              onClick={() => setShowQuickPasswordModal(false)}
+              className="absolute right-4 top-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-600">
+                <Key className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">
+                  Mağaza Şifresi Belirle
+                </h3>
+                <p className="text-xs text-slate-500 truncate max-w-[200px]">
+                  {quickPasswordBranch.name} ({quickPasswordBranch.code})
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveQuickPassword} className="space-y-4 text-xs">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block">
+                    Yeni Giriş Şifresi:
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setQuickPasswordValue('1122')}
+                      className="text-[11px] text-emerald-600 hover:underline font-semibold cursor-pointer"
+                    >
+                      1122 Yap
+                    </button>
+                    <span className="text-slate-300 dark:text-slate-700">•</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowQuickPasswordText(!showQuickPasswordText)}
+                      className="text-[11px] text-amber-600 hover:underline font-semibold cursor-pointer"
+                    >
+                      {showQuickPasswordText ? 'Gizle' : 'Göster'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <input
+                    type={showQuickPasswordText ? 'text' : 'password'}
+                    required
+                    value={quickPasswordValue}
+                    onChange={(e) => setQuickPasswordValue(e.target.value)}
+                    placeholder="Şifre yazınız (Varsayılan: 1122)"
+                    autoFocus
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono font-bold pr-10 text-slate-900 dark:text-white tracking-wider"
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                    <Key className="w-4 h-4 text-amber-500" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowQuickPasswordModal(false)}
+                  className="px-3 py-2 rounded-xl text-slate-600 dark:text-slate-400 font-bold cursor-pointer"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold flex items-center gap-1.5 shadow cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Şifreyi Kaydet</span>
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

@@ -3,7 +3,8 @@ import {
   TrainingDocument, 
   TrainingCategory, 
   TrainingCompletion,
-  TrainingAnnouncement
+  TrainingAnnouncement,
+  Branch
 } from './types';
 import { 
   getStoredTrainings, 
@@ -20,11 +21,22 @@ import {
   subscribeToTrainingUpdates,
   fetchRemoteTrainings
 } from './services/trainingStorage';
+import { 
+  getStoredBranches, 
+  upsertBranch, 
+  deleteBranch, 
+  updateBranchPassword, 
+  resetAllBranchPasswords, 
+  resetBranchesToDefault, 
+  fetchRemoteBranches, 
+  subscribeToBranchUpdates 
+} from './services/branchStorage';
 import { purgeLegacyStockData } from './services/firebaseService';
 import { officialEsmeBranches } from './mockData';
 
 // Training Components
 import { TrainingHeader, AppThemeMode } from './components/TrainingHeader';
+import { StoreAuthGateway } from './components/StoreAuthGateway';
 import { AnnouncementsBanner } from './components/AnnouncementsBanner';
 import { PendingTrainingsReminder } from './components/PendingTrainingsReminder';
 import { TrainingCatalogView } from './components/TrainingCatalogView';
@@ -41,6 +53,7 @@ export default function App() {
   const [trainings, setTrainings] = useState<TrainingDocument[]>(() => getStoredTrainings());
   const [completions, setCompletions] = useState<TrainingCompletion[]>(() => getStoredCompletions());
   const [announcements, setAnnouncements] = useState<TrainingAnnouncement[]>(() => getStoredAnnouncements());
+  const [branches, setBranches] = useState<Branch[]>(() => getStoredBranches());
   const [trainingActiveTab, setTrainingActiveTab] = useState<'catalog' | 'ebook' | 'video' | 'tebellug' | 'leaderboard' | 'admin'>('catalog');
   const [selectedCategory, setSelectedCategory] = useState<'all' | TrainingCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -96,6 +109,13 @@ export default function App() {
   });
 
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [isStoreAuthenticated, setIsStoreAuthenticated] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('esme_store_authenticated') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   const [showAdminAuthModal, setShowAdminAuthModal] = useState(false);
   const [selectedTrainingId, setSelectedTrainingId] = useState<string | null>(null);
@@ -108,13 +128,14 @@ export default function App() {
     ? trainings.find(t => t.id === selectedTrainingId) || null 
     : null;
 
-  // Real-time Firestore sync for training database and purge any legacy stock data
+  // Real-time Firestore sync for training database, branches, and purge any legacy stock data
   useEffect(() => {
     try {
       localStorage.removeItem('esme_is_admin_mode');
     } catch {}
     purgeLegacyStockData();
 
+    // Fetch trainings, completions, announcements
     fetchRemoteTrainings().then(remote => {
       if (Array.isArray(remote.trainings)) {
         setTrainings(remote.trainings);
@@ -133,8 +154,20 @@ export default function App() {
       (updatedAnnouncements) => setAnnouncements(updatedAnnouncements)
     );
 
+    // Fetch and subscribe to branches
+    fetchRemoteBranches().then(remoteBranches => {
+      if (Array.isArray(remoteBranches) && remoteBranches.length > 0) {
+        setBranches(remoteBranches);
+      }
+    });
+
+    const unsubscribeBranches = subscribeToBranchUpdates((updatedBranches) => {
+      setBranches(updatedBranches);
+    });
+
     return () => {
       unsubscribeTraining();
+      unsubscribeBranches();
     };
   }, []);
 
@@ -146,7 +179,52 @@ export default function App() {
     } catch {}
   }, [currentBranchId, currentPersonnel]);
 
-  const currentBranch = officialEsmeBranches.find(b => b.id === currentBranchId) || officialEsmeBranches[0];
+  const currentBranch = branches.find(b => b.id === currentBranchId) || branches[0] || officialEsmeBranches[0];
+
+  // Store Login & Logout Handlers
+  const handleStoreLoginSuccess = (branchId: number, personnel: string) => {
+    setCurrentBranchId(branchId);
+    setCurrentPersonnel(personnel);
+    setIsStoreAuthenticated(true);
+    try {
+      localStorage.setItem('esme_store_authenticated', 'true');
+      localStorage.setItem('esme_active_branch_id', String(branchId));
+      localStorage.setItem('esme_active_personnel_name', personnel);
+    } catch {}
+  };
+
+  const handleStoreLogout = () => {
+    setIsStoreAuthenticated(false);
+    try {
+      localStorage.removeItem('esme_store_authenticated');
+    } catch {}
+  };
+
+  // Branch CRUD Handlers for Administrator
+  const handleSaveBranch = async (branchData: Partial<Branch> & { name: string }) => {
+    const updated = await upsertBranch(branchData);
+    setBranches(updated);
+  };
+
+  const handleDeleteBranch = async (branchId: number) => {
+    const updated = await deleteBranch(branchId);
+    setBranches(updated);
+  };
+
+  const handleUpdateBranchPassword = async (branchId: number, newPassword: string) => {
+    const updated = await updateBranchPassword(branchId, newPassword);
+    setBranches(updated);
+  };
+
+  const handleResetBranchPasswords = async (newPassword?: string) => {
+    const updated = await resetAllBranchPasswords(newPassword || '1122');
+    setBranches(updated);
+  };
+
+  const handleResetBranchesToDefault = async () => {
+    const defaults = await resetBranchesToDefault();
+    setBranches(defaults);
+  };
 
   // Active announcements count for the notification bell
   const activeAnnouncementsCount = useMemo(() => {
@@ -233,6 +311,30 @@ export default function App() {
       ? 'theme-sepia-wrapper bg-[#f4ecd8] text-[#2c2216]'
       : 'theme-light bg-slate-100 text-slate-900';
 
+  // Gatekeeper: If store user is not authenticated and not in admin mode, show StoreAuthGateway
+  if (!isStoreAuthenticated && !isAdmin) {
+    return (
+      <div className={`min-h-screen flex flex-col font-sans transition-colors duration-200 ${appTheme === 'dark' ? 'dark' : ''}`}>
+        <StoreAuthGateway
+          branches={branches}
+          onSuccess={handleStoreLoginSuccess}
+          onOpenAdminAuth={() => setShowAdminAuthModal(true)}
+          initialBranchId={currentBranchId}
+          initialPersonnel={currentPersonnel}
+          appTheme={appTheme}
+        />
+        <AdminAuthModal
+          isOpen={showAdminAuthModal}
+          onClose={() => setShowAdminAuthModal(false)}
+          onSuccess={() => {
+            setIsAdmin(true);
+            setTrainingActiveTab('admin');
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className={`min-h-screen flex flex-col font-sans transition-colors duration-200 selection:bg-red-500 selection:text-white ${appTheme === 'dark' ? 'dark' : ''}`}>
       <div className={`flex-1 flex flex-col transition-colors duration-200 ${themeWrapperClass}`}>
@@ -251,6 +353,8 @@ export default function App() {
           isAdmin={isAdmin}
           setIsAdmin={setIsAdmin}
           onOpenAdminAuth={() => setShowAdminAuthModal(true)}
+          branches={branches}
+          onStoreLogout={handleStoreLogout}
           totalCount={trainings.length}
           bilgiIslemCount={bilgiIslemCount}
           depocuCount={depocuCount}
@@ -432,6 +536,12 @@ export default function App() {
                 onResetTrainings={handleResetTrainings}
                 initialVideoUrl={pendingAdminVideoUrl}
                 onClearInitialVideoUrl={() => setPendingAdminVideoUrl(null)}
+                branches={branches}
+                onSaveBranch={handleSaveBranch}
+                onDeleteBranch={handleDeleteBranch}
+                onUpdateBranchPassword={handleUpdateBranchPassword}
+                onResetBranchPasswords={handleResetBranchPasswords}
+                onResetBranchesToDefault={handleResetBranchesToDefault}
               />
             ) : (
               <div className="bg-white dark:bg-slate-900 rounded-2xl p-12 text-center border border-slate-200 dark:border-slate-800 shadow-sm max-w-lg mx-auto">

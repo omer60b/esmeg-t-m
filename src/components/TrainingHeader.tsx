@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { TrainingCategory } from '../types';
 import { officialEsmeBranches } from '../mockData';
+import { Branch } from '../types';
 
 export type AppThemeMode = 'sepia' | 'light' | 'dark';
 
@@ -30,6 +31,8 @@ interface TrainingHeaderProps {
   isAdmin: boolean;
   setIsAdmin: (val: boolean) => void;
   onOpenAdminAuth: () => void;
+  branches?: Branch[];
+  onStoreLogout?: () => void;
   totalCount?: number;
   bilgiIslemCount?: number;
   depocuCount?: number;
@@ -51,13 +54,16 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
   isAdmin,
   setIsAdmin,
   onOpenAdminAuth,
+  branches: propsBranches,
+  onStoreLogout,
   appTheme = 'sepia',
   setAppTheme,
   pendingCount = 0,
   onClickPendingBell
 }) => {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
-  const currentBranch = officialEsmeBranches.find(b => b.id === currentBranchId) || officialEsmeBranches[0];
+  const branchList = propsBranches && propsBranches.length > 0 ? propsBranches : officialEsmeBranches;
+  const currentBranch = branchList.find(b => b.id === currentBranchId) || branchList[0];
 
   return (
     <header className="sticky top-0 z-40 bg-slate-900 border-b border-slate-800 text-white shadow-xl">
@@ -272,15 +278,15 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
 
                   <div className="space-y-2.5 mb-3">
                     <div>
-                      <label className="text-[11px] text-slate-400 block mb-1">Şubeniz (35 Esme Şubesi):</label>
+                      <label className="text-[11px] text-slate-400 block mb-1">Şubeniz ({branchList.length} Esme Mağazası):</label>
                       <select
                         value={currentBranchId}
                         onChange={(e) => setCurrentBranchId(Number(e.target.value))}
                         className="w-full bg-slate-800 border border-slate-700 text-xs text-white rounded-md p-1.5 focus:ring-1 focus:ring-red-500"
                       >
-                        {officialEsmeBranches.map(b => (
+                        {branchList.map(b => (
                           <option key={b.id} value={b.id}>
-                            {b.name} ({b.city})
+                            {b.name} ({b.city || 'Merkez'})
                           </option>
                         ))}
                       </select>
@@ -340,7 +346,24 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
                     )}
                   </div>
 
-                  <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-xs">
+                  {/* Store Logout / Change Branch Button */}
+                  {onStoreLogout && (
+                    <div className="mb-2.5 pb-2.5 border-b border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowUserDropdown(false);
+                          onStoreLogout();
+                        }}
+                        className="w-full py-1.5 px-2.5 rounded-lg bg-red-950/40 hover:bg-red-900/60 border border-red-800/60 text-red-300 hover:text-white text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer transition shadow-xs"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>Mağazadan Çıkış Yap / Şube Değiştir</span>
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="pt-1 flex justify-between items-center text-xs">
                     {isAdmin ? (
                       <button
                         onClick={() => {

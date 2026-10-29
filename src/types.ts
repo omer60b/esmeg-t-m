@@ -3,6 +3,8 @@ export interface Branch {
   name: string;
   code: string;
   city?: string;
+  password?: string;
+  isCustom?: boolean;
   createdAt?: string;
 }
 
