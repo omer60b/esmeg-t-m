@@ -54,8 +54,10 @@ function saveDeletedIds(ids: Set<string>): void {
  * Ensures a training object is safe to write to a single Firestore document (< 850KB)
  */
 function sanitizeTrainingForFirestore(t: TrainingDocument): TrainingDocument {
+  const hasVideo = Boolean(t.videoUrl && t.videoUrl.trim() !== '');
   const copy: TrainingDocument = JSON.parse(JSON.stringify({
     ...t,
+    videoType: t.videoType || (hasVideo ? 'link' : 'none'),
     videoUrl: t.videoUrl ?? '',
     pdfPath: t.pdfPath ?? ''
   }));
@@ -120,16 +122,26 @@ export function mergeTrainingsList(
     if (!t || !t.id || deletedIds.has(t.id)) return;
     if (defaultMap.has(t.id)) {
       const existing = defaultMap.get(t.id)!;
+      const isLegacyDummyVideo = typeof t.videoUrl === 'string' && t.videoUrl.includes('commondatastorage.googleapis.com');
+      const mergedVideoUrl = (t.videoUrl !== undefined && !isLegacyDummyVideo) ? t.videoUrl : existing.videoUrl;
+      const mergedVideoType = t.videoType !== undefined 
+        ? t.videoType 
+        : (mergedVideoUrl ? 'link' : existing.videoType);
+
       defaultMap.set(t.id, {
         ...existing,
         ...t,
-        videoUrl: t.videoUrl !== undefined ? (t.videoUrl || undefined) : existing.videoUrl,
-        pdfPath: t.pdfPath !== undefined ? (t.pdfPath || undefined) : existing.pdfPath,
+        videoType: mergedVideoType,
+        videoUrl: mergedVideoUrl,
+        videoTitle: t.videoTitle || existing.videoTitle,
+        videoDuration: t.videoDuration || existing.videoDuration,
+        pdfPath: t.pdfPath !== undefined ? t.pdfPath : existing.pdfPath,
         category: t.category || existing.category
       });
     } else if (!initialTrainings.some(def => def.id === t.id)) {
       customMap.set(t.id, {
         ...t,
+        videoType: t.videoType || (t.videoUrl ? 'link' : 'none'),
         videoUrl: t.videoUrl || undefined,
         pdfPath: t.pdfPath || undefined,
         isCustom: true

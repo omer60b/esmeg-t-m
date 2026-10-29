@@ -23,6 +23,7 @@ import {
   Layers,
   Award
 } from 'lucide-react';
+import { isYouTubeUrl } from '../utils/videoUtils';
 
 interface TrainingCatalogViewProps {
   trainings: TrainingDocument[];
@@ -62,7 +63,7 @@ export const TrainingCatalogView: React.FC<TrainingCatalogViewProps> = ({
     if (priorityFilter !== 'all' && t.priority !== priorityFilter) return false;
 
     // Video filter
-    if (onlyVideo && (!t.videoUrl || t.videoType === 'none')) return false;
+    if (onlyVideo && (!t.videoUrl || (t.videoType === 'none' && !isYouTubeUrl(t.videoUrl)))) return false;
 
     // Search query
     if (searchQuery.trim()) {

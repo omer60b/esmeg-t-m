@@ -94,6 +94,13 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
   const [adminVideoUrlInput, setAdminVideoUrlInput] = useState<string>(training.videoUrl || '');
   const [videoSaveMessage, setVideoSaveMessage] = useState<string | null>(null);
 
+  // Keep activeTab synced when opened with a specific initialTab or training changes
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, training.id]);
+
   // Keep videoSrc synced in real-time when training.videoUrl updates from Firestore
   useEffect(() => {
     if (!uploadedVideoName) {

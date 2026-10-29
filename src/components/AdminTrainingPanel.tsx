@@ -49,7 +49,9 @@ import {
   Eye,
   EyeOff,
   MapPin,
-  Store
+  Store,
+  Youtube,
+  ExternalLink
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -231,6 +233,41 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
   const [quickPasswordBranch, setQuickPasswordBranch] = useState<Branch | null>(null);
   const [quickPasswordValue, setQuickPasswordValue] = useState('1122');
   const [showQuickPasswordText, setShowQuickPasswordText] = useState(false);
+
+  // Quick Video Link Modal State (Instant YouTube / Video Assignment by Admin)
+  const [showQuickVideoModal, setShowQuickVideoModal] = useState(false);
+  const [quickVideoTraining, setQuickVideoTraining] = useState<TrainingDocument | null>(null);
+  const [quickVideoUrlInput, setQuickVideoUrlInput] = useState('');
+  const [quickVideoTitleInput, setQuickVideoTitleInput] = useState('');
+  const [quickVideoDurationInput, setQuickVideoDurationInput] = useState('05:00');
+
+  const handleOpenQuickVideo = (training: TrainingDocument) => {
+    setQuickVideoTraining(training);
+    setQuickVideoUrlInput(training.videoUrl || '');
+    setQuickVideoTitleInput(training.videoTitle || training.title);
+    setQuickVideoDurationInput(training.videoDuration || '05:00');
+    setShowQuickVideoModal(true);
+  };
+
+  const handleSaveQuickVideo = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickVideoTraining) return;
+    const trimmed = quickVideoUrlInput.trim();
+    const updated: TrainingDocument = {
+      ...quickVideoTraining,
+      videoType: trimmed ? 'link' : 'none',
+      videoUrl: trimmed || undefined,
+      videoTitle: quickVideoTitleInput.trim() || quickVideoTraining.title,
+      videoDuration: quickVideoDurationInput.trim() || '05:00',
+      updatedAt: new Date().toISOString()
+    };
+    onSaveTraining(updated);
+    setShowQuickVideoModal(false);
+    showNotice(trimmed
+      ? `"${quickVideoTraining.title}" eğitimine YouTube video linki kaydedildi ve tüm kullanıcılara anlık yayınlandı!`
+      : `"${quickVideoTraining.title}" eğitiminden video bağlantısı kaldırıldı.`
+    );
+  };
 
   // Open modal in create branch mode
   const handleOpenNewBranch = () => {
@@ -676,7 +713,8 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
       return;
     }
 
-    const hasValidVideo = videoInputType !== 'none' && Boolean(formVideoUrl.trim());
+    const trimmedVideo = formVideoUrl.trim();
+    const hasValidVideo = Boolean(trimmedVideo);
 
     const payload: TrainingDocument = {
       ...(editingTraining || {}),
@@ -691,8 +729,8 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
       priority: formPriority,
       summary: formSummary.trim() || formTitle.trim(),
       pdfPath: formPdfPath.trim() || undefined,
-      videoType: hasValidVideo ? videoInputType : 'none',
-      videoUrl: hasValidVideo ? formVideoUrl.trim() : undefined,
+      videoType: hasValidVideo ? (videoInputType === 'none' ? 'link' : videoInputType) : 'none',
+      videoUrl: hasValidVideo ? trimmedVideo : undefined,
       videoTitle: formVideoTitle.trim() || formTitle.trim(),
       videoDuration: formVideoDuration.trim() || '05:00',
       chapters: chapters.length > 0 ? chapters : [
@@ -932,6 +970,13 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                               title="Önizle / Oku"
                             >
                               <FileText className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleOpenQuickVideo(t)}
+                              className="p-1.5 rounded-lg bg-red-50 dark:bg-red-950/60 hover:bg-red-100 dark:hover:bg-red-900/60 text-red-600 dark:text-red-400 transition cursor-pointer"
+                              title="YouTube Video Linki Ata / Güncelle"
+                            >
+                              <Youtube className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleOpenEdit(t)}
@@ -1760,6 +1805,110 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                 >
                   <Save className="w-4 h-4" />
                   <span>{editingBranch ? 'Mağazayı Güncelle' : 'Mağazayı Aç ve Kaydet'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK VIDEO LINK MODAL (ADMIN ONLY) */}
+      {showQuickVideoModal && quickVideoTraining && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-lg p-6 shadow-2xl relative">
+            <button
+              type="button"
+              onClick={() => setShowQuickVideoModal(false)}
+              className="absolute right-4 top-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-600">
+                <Youtube className="w-5 h-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">
+                  YouTube / Video Linki Tanımla
+                </h3>
+                <p className="text-xs text-slate-500 truncate">
+                  {quickVideoTraining.title} ({quickVideoTraining.docNo})
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveQuickVideo} className="space-y-4 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  YouTube Video Linki (veya MP4 Adresi):
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={quickVideoUrlInput}
+                    onChange={(e) => setQuickVideoUrlInput(e.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=... veya https://youtu.be/..."
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-red-500"
+                    autoFocus
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  * YouTube linki, embed iframe kodu veya web video linki yapıştırabilirsiniz. Boş bırakıp kaydederseniz video kaldırılır.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Video Başlığı:
+                  </label>
+                  <input
+                    type="text"
+                    value={quickVideoTitleInput}
+                    onChange={(e) => setQuickVideoTitleInput(e.target.value)}
+                    placeholder="Video Başlığı"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    Video Süresi:
+                  </label>
+                  <input
+                    type="text"
+                    value={quickVideoDurationInput}
+                    onChange={(e) => setQuickVideoDurationInput(e.target.value)}
+                    placeholder="Örn: 06:45"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Live Preview if valid URL */}
+              {quickVideoUrlInput.trim() && (
+                <div className="rounded-xl overflow-hidden border border-slate-700 aspect-video bg-black max-h-48">
+                  <UniversalVideoPlayer
+                    src={quickVideoUrlInput.trim()}
+                    title={quickVideoTitleInput || quickVideoTraining.title}
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowQuickVideoModal(false)}
+                  className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold cursor-pointer"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold transition shadow-md shadow-red-600/30 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Kaydet & Anlık Yayınla</span>
                 </button>
               </div>
             </form>

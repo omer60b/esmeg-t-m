@@ -36,7 +36,9 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
   onQuickUpdateVideo,
   isAdmin
 }) => {
-  const videoTrainings = trainings.filter(t => Boolean(t.videoUrl && t.videoUrl.trim() && t.videoType !== 'none'));
+  const videoTrainings = trainings.filter(t => 
+    Boolean(t.videoUrl && t.videoUrl.trim() && (t.videoType !== 'none' || isYouTubeUrl(t.videoUrl)))
+  );
 
   const [activeTrainingId, setActiveTrainingId] = useState<string>(
     videoTrainings[0]?.id || trainings[0]?.id || ''

@@ -12,20 +12,26 @@ import { ExternalLink, Video, Youtube } from 'lucide-react';
  */
 export function extractYouTubeId(url: string | undefined | null): string | null {
   if (!url) return null;
-  const trimmed = url.trim();
+  let trimmed = url.trim();
   if (!trimmed) return null;
 
-  try {
-    // Handle direct 11-character ID if someone pasted just the ID
-    if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
-      return trimmed;
-    }
+  // Handle direct 11-character ID if someone pasted just the ID
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
+    return trimmed;
+  }
 
+  // If user pasted an iframe embed snippet: <iframe ... src="..." ...>
+  const iframeMatch = trimmed.match(/src=["']([^"']+)["']/i);
+  if (iframeMatch && iframeMatch[1]) {
+    trimmed = iframeMatch[1].trim();
+  }
+
+  try {
     const parsedUrl = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
     const hostname = parsedUrl.hostname.toLowerCase();
 
     if (hostname.includes('youtu.be')) {
-      const id = parsedUrl.pathname.slice(1).split('/')[0];
+      const id = parsedUrl.pathname.slice(1).split('/')[0]?.split('?')[0];
       if (id && id.length >= 10) return id;
     }
 
@@ -35,7 +41,7 @@ export function extractYouTubeId(url: string | undefined | null): string | null 
 
       const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
       if (pathParts.length >= 2 && ['embed', 'shorts', 'live', 'v'].includes(pathParts[0])) {
-        return pathParts[1];
+        return pathParts[1].split('?')[0];
       }
     }
   } catch {
@@ -54,7 +60,7 @@ export function isYouTubeUrl(url: string | undefined | null): boolean {
 export function getYouTubeEmbedUrl(url: string | undefined | null): string | null {
   const videoId = extractYouTubeId(url);
   if (!videoId) return null;
-  return `https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1`;
+  return `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&enablejsapi=1&playsinline=1`;
 }
 
 export function getYouTubeWatchUrl(url: string | undefined | null): string | null {
@@ -125,26 +131,28 @@ export const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
   const ytWatchUrl = getYouTubeWatchUrl(src);
   if (ytEmbedUrl) {
     return (
-      <div className="relative w-full h-full flex flex-col bg-black">
-        <iframe
-          src={ytEmbedUrl}
-          title={title}
-          className="w-full h-full flex-1 border-0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          referrerPolicy="strict-origin-when-cross-origin"
-          allowFullScreen
-        />
+      <div className="relative w-full h-full flex flex-col bg-black overflow-hidden rounded-xl">
+        <div className="relative w-full flex-1 min-h-[220px] sm:min-h-[340px] bg-black">
+          <iframe
+            src={ytEmbedUrl}
+            title={title}
+            className="w-full h-full absolute inset-0 border-0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allowFullScreen
+          />
+        </div>
         {ytWatchUrl && (
-          <div className="bg-slate-900/95 px-3 py-1.5 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-300">
-            <span className="flex items-center gap-1.5 font-medium text-red-400">
-              <Youtube className="w-3.5 h-3.5" />
-              YouTube Eğitim Videosu Aktif
+          <div className="bg-slate-900/95 px-3 py-2 border-t border-slate-800 flex items-center justify-between text-xs text-slate-300 shrink-0">
+            <span className="flex items-center gap-1.5 font-medium text-red-400 truncate mr-2">
+              <Youtube className="w-4 h-4 text-red-500 shrink-0" />
+              <span className="font-bold">YouTube:</span> <span className="truncate">{title}</span>
             </span>
             <a
               href={ytWatchUrl}
               target="_blank"
-              rel="noreferrer"
-              className="text-sky-400 hover:text-sky-300 flex items-center gap-1 font-semibold"
+              rel="noopener noreferrer"
+              className="bg-red-600 hover:bg-red-500 text-white font-bold px-2.5 py-1 rounded text-[11px] flex items-center gap-1.5 transition shadow shrink-0 cursor-pointer"
             >
               <span>YouTube'da Aç</span>
               <ExternalLink className="w-3 h-3" />
