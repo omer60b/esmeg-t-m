@@ -54,7 +54,15 @@ export default function App() {
   const [completions, setCompletions] = useState<TrainingCompletion[]>(() => getStoredCompletions());
   const [announcements, setAnnouncements] = useState<TrainingAnnouncement[]>(() => getStoredAnnouncements());
   const [branches, setBranches] = useState<Branch[]>(() => getStoredBranches());
-  const [trainingActiveTab, setTrainingActiveTab] = useState<'catalog' | 'ebook' | 'video' | 'tebellug' | 'leaderboard' | 'admin'>('catalog');
+  const [trainingActiveTab, setTrainingActiveTab] = useState<'catalog' | 'ebook' | 'video' | 'tebellug' | 'leaderboard' | 'admin'>(() => {
+    try {
+      const savedAdmin = localStorage.getItem('esme_is_admin_mode') === 'true';
+      const savedTab = localStorage.getItem('esme_active_tab') as any;
+      if (savedTab) return savedTab;
+      if (savedAdmin) return 'admin';
+    } catch {}
+    return 'catalog';
+  });
   const [selectedCategory, setSelectedCategory] = useState<'all' | TrainingCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -72,6 +80,13 @@ export default function App() {
   });
 
   const [bellTrigger, setBellTrigger] = useState<number>(0);
+
+  // Sync active tab to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('esme_active_tab', trainingActiveTab);
+    } catch {}
+  }, [trainingActiveTab]);
 
   // Sync theme classes on <html> element for high-contrast readability across all modals & pages
   useEffect(() => {
@@ -108,7 +123,28 @@ export default function App() {
     }
   });
 
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  // Admin login persists across page refresh; only cleared on explicit logout
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('esme_is_admin_mode') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (isAdmin) {
+        localStorage.setItem('esme_is_admin_mode', 'true');
+      } else {
+        localStorage.removeItem('esme_is_admin_mode');
+        if (trainingActiveTab === 'admin') {
+          setTrainingActiveTab('catalog');
+        }
+      }
+    } catch {}
+  }, [isAdmin, trainingActiveTab]);
+
   const [isStoreAuthenticated, setIsStoreAuthenticated] = useState<boolean>(() => {
     try {
       return localStorage.getItem('esme_store_authenticated') === 'true';
@@ -130,9 +166,6 @@ export default function App() {
 
   // Real-time Firestore sync for training database, branches, and purge any legacy stock data
   useEffect(() => {
-    try {
-      localStorage.removeItem('esme_is_admin_mode');
-    } catch {}
     purgeLegacyStockData();
 
     // Fetch trainings, completions, announcements

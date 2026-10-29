@@ -45,12 +45,14 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
   onDeleteVideo,
   isAdmin
 }) => {
-  // Filter mode for playlist: 'videos_only' or 'all_topics' (allows admins to see & edit older topics without video)
-  const [playlistMode, setPlaylistMode] = useState<'videos_only' | 'all_topics'>('videos_only');
-
   const videoTrainings = trainings.filter(t => 
     Boolean(t.videoUrl && t.videoUrl.trim() && (t.videoType !== 'none' || isYouTubeUrl(t.videoUrl)))
   );
+
+  // Filter mode for playlist: 'videos_only' or 'all_topics' (allows admins to see & edit older topics without video)
+  const [playlistMode, setPlaylistMode] = useState<'videos_only' | 'all_topics'>(() => {
+    return (isAdmin && videoTrainings.length === 0) ? 'all_topics' : 'videos_only';
+  });
 
   const [activeTrainingId, setActiveTrainingId] = useState<string>(
     videoTrainings[0]?.id || trainings[0]?.id || ''
@@ -550,7 +552,30 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
 
           {/* Playlist Cards */}
           <div className="space-y-2 max-h-[580px] overflow-y-auto pr-1">
-            {filteredPlaylist.map((t) => {
+            {filteredPlaylist.length === 0 ? (
+              <div className="text-center py-10 px-4 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-950/30">
+                <Film className="w-8 h-8 text-slate-400 mx-auto mb-2 opacity-50" />
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Henüz Video Bulunmamaktadır
+                </p>
+                <p className="text-[11px] text-slate-400 mt-1 max-w-xs mx-auto leading-relaxed">
+                  {isAdmin 
+                    ? 'Yönetici olarak yukarıdaki "Tüm Konular" butonuna geçip eski veya yeni tüm konulara YouTube video linki ekleyebilirsiniz.'
+                    : 'Yöneticilerimiz tarafından video eğitim yüklendiğinde bu alanda otomatik olarak listelenecektir.'}
+                </p>
+                {isAdmin && playlistMode === 'videos_only' && (
+                  <button
+                    type="button"
+                    onClick={() => setPlaylistMode('all_topics')}
+                    className="mt-3 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition inline-flex items-center gap-1.5 shadow cursor-pointer"
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Tüm Konuları Listele & Video Ekle</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              filteredPlaylist.map((t) => {
               const isActive = activeTraining?.id === t.id && !customVideoSrc;
               const isBI = t.category === 'bilgi-islem';
               const hasVideo = Boolean(t.videoUrl && t.videoUrl.trim() && t.videoType !== 'none');
@@ -646,7 +671,7 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
                   </div>
                 </div>
               );
-            })}
+            }))}
           </div>
 
         </div>

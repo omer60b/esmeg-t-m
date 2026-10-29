@@ -50,15 +50,48 @@ function saveDeletedIds(ids: Set<string>): void {
   } catch {}
 }
 
+// Legacy/automatic preloaded sample videos that should be excluded so only admin videos appear
+export const AUTOMATIC_PRELOADED_VIDEOS = new Set([
+  '0kP0aW4l6bM',
+  'inWWhr5tnEA',
+  '60ItHLz5WEA',
+  'kJQP7kiw5Fk',
+  'L_LUpnjgPso',
+  '3JZ_D3ELwOQ',
+  'fJ9rUzIMcZQ',
+  'M576WGiDBdQ',
+  '21X5lGlDOfg',
+  'JGwWNGJdvx8',
+  'lTRiuFIWV54',
+  'uelHwf8o7_U'
+]);
+
+export function isAutomaticPreloadedVideo(url?: string | null): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const clean = url.trim();
+  if (!clean) return false;
+  if (clean.includes('commondatastorage.googleapis.com') || clean.includes('gtv-videos-bucket')) {
+    return true;
+  }
+  for (const id of AUTOMATIC_PRELOADED_VIDEOS) {
+    if (clean.includes(id)) return true;
+  }
+  return false;
+}
+
 /**
  * Ensures a training object is safe to write to a single Firestore document (< 850KB)
  */
 function sanitizeTrainingForFirestore(t: TrainingDocument): TrainingDocument {
-  const hasVideo = Boolean(t.videoUrl && t.videoUrl.trim() !== '');
+  const isAutoPreload = isAutomaticPreloadedVideo(t.videoUrl);
+  const cleanVideoUrl = isAutoPreload ? '' : (t.videoUrl ?? '');
+  const hasVideo = Boolean(cleanVideoUrl && cleanVideoUrl.trim() !== '');
   const copy: TrainingDocument = JSON.parse(JSON.stringify({
     ...t,
-    videoType: t.videoType || (hasVideo ? 'link' : 'none'),
-    videoUrl: t.videoUrl ?? '',
+    videoType: hasVideo ? (t.videoType || 'link') : 'none',
+    videoUrl: cleanVideoUrl,
+    videoTitle: hasVideo ? (t.videoTitle || '') : '',
+    videoDuration: hasVideo ? (t.videoDuration || '') : '',
     pdfPath: t.pdfPath ?? ''
   }));
 
@@ -79,6 +112,13 @@ function sanitizeTrainingForFirestore(t: TrainingDocument): TrainingDocument {
 function sanitizeCatalogForFirestore(list: TrainingDocument[]): TrainingDocument[] {
   return list.map(t => {
     const item = sanitizeTrainingForFirestore(t);
+    const isAutoPreload = isAutomaticPreloadedVideo(item.videoUrl);
+    if (isAutoPreload) {
+      item.videoUrl = '';
+      item.videoType = 'none';
+      item.videoTitle = '';
+      item.videoDuration = '';
+    }
     if (item.videoUrl && item.videoUrl.startsWith('data:') && item.videoUrl.length > 100000) {
       item.videoUrl = '';
     }
@@ -120,29 +160,36 @@ export function mergeTrainingsList(
 
   incoming.forEach((t: TrainingDocument) => {
     if (!t || !t.id || deletedIds.has(t.id)) return;
+
+    const isAutoPreload = isAutomaticPreloadedVideo(t.videoUrl);
+    const sanitizedVideoUrl = isAutoPreload ? undefined : (t.videoUrl && t.videoUrl.trim() !== '' ? t.videoUrl.trim() : undefined);
+    const sanitizedVideoType = sanitizedVideoUrl ? (t.videoType || 'link') : 'none';
+    const sanitizedVideoTitle = sanitizedVideoUrl ? t.videoTitle : undefined;
+    const sanitizedVideoDuration = sanitizedVideoUrl ? t.videoDuration : undefined;
+
     if (defaultMap.has(t.id)) {
       const existing = defaultMap.get(t.id)!;
-      const isLegacyDummyVideo = typeof t.videoUrl === 'string' && t.videoUrl.includes('commondatastorage.googleapis.com');
-      const mergedVideoUrl = (t.videoUrl !== undefined && !isLegacyDummyVideo) ? t.videoUrl : existing.videoUrl;
-      const mergedVideoType = t.videoType !== undefined 
-        ? t.videoType 
-        : (mergedVideoUrl ? 'link' : existing.videoType);
+      // If incoming video was an auto-preload dummy, discard it and keep empty
+      const mergedVideoUrl = (sanitizedVideoUrl !== undefined) ? sanitizedVideoUrl : (isAutoPreload ? undefined : existing.videoUrl);
+      const mergedVideoType = mergedVideoUrl ? (t.videoType || 'link') : 'none';
 
       defaultMap.set(t.id, {
         ...existing,
         ...t,
         videoType: mergedVideoType,
         videoUrl: mergedVideoUrl,
-        videoTitle: t.videoTitle || existing.videoTitle,
-        videoDuration: t.videoDuration || existing.videoDuration,
+        videoTitle: mergedVideoUrl ? (sanitizedVideoTitle || existing.videoTitle) : undefined,
+        videoDuration: mergedVideoUrl ? (sanitizedVideoDuration || existing.videoDuration) : undefined,
         pdfPath: t.pdfPath !== undefined ? t.pdfPath : existing.pdfPath,
         category: t.category || existing.category
       });
     } else if (!initialTrainings.some(def => def.id === t.id)) {
       customMap.set(t.id, {
         ...t,
-        videoType: t.videoType || (t.videoUrl ? 'link' : 'none'),
-        videoUrl: t.videoUrl || undefined,
+        videoType: sanitizedVideoType,
+        videoUrl: sanitizedVideoUrl,
+        videoTitle: sanitizedVideoTitle,
+        videoDuration: sanitizedVideoDuration,
         pdfPath: t.pdfPath || undefined,
         isCustom: true
       });
@@ -170,10 +217,14 @@ export function getStoredTrainings(): TrainingDocument[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return mergeTrainingsList(parsed, deletedIds);
+        const merged = mergeTrainingsList(parsed, deletedIds);
+        localStorage.setItem(STORAGE_TRAININGS_KEY, JSON.stringify(merged));
+        return merged;
       }
     }
-    return mergeTrainingsList([], deletedIds);
+    const merged = mergeTrainingsList([], deletedIds);
+    localStorage.setItem(STORAGE_TRAININGS_KEY, JSON.stringify(merged));
+    return merged;
   } catch (err) {
     console.error('Failed to parse stored trainings:', err);
   }

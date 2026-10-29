@@ -8,13 +8,16 @@ import {
   LogOut, 
   LogIn, 
   FileCheck2,
-  Trophy,
-  Bell,
-  Key,
-  CheckCircle2,
-  AlertCircle,
-  X,
-  Save
+  Trophy, 
+  Bell, 
+  Key, 
+  CheckCircle2, 
+  AlertCircle, 
+  X, 
+  Save,
+  Building2,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { TrainingCategory } from '../types';
 import { officialEsmeBranches } from '../mockData';
@@ -81,6 +84,71 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
   const [showPasswordText, setShowPasswordText] = useState(false);
   const [passwordModalError, setPasswordModalError] = useState<string | null>(null);
   const [passwordModalSuccess, setPasswordModalSuccess] = useState<string | null>(null);
+
+  // Branch Switch Password Verification Modal State (each branch has unique login)
+  const [showBranchSwitchModal, setShowBranchSwitchModal] = useState(false);
+  const [targetBranchId, setTargetBranchId] = useState<number | null>(null);
+  const [branchSwitchPassword, setBranchSwitchPassword] = useState('');
+  const [showSwitchPasswordText, setShowSwitchPasswordText] = useState(false);
+  const [branchSwitchError, setBranchSwitchError] = useState<string | null>(null);
+  const [branchSwitchSuccess, setBranchSwitchSuccess] = useState<string | null>(null);
+
+  const targetBranch = targetBranchId ? branchList.find(b => b.id === targetBranchId) : null;
+
+  const handleBranchSelectChange = (newBranchId: number) => {
+    if (newBranchId === currentBranchId) return;
+
+    if (isAdmin) {
+      // Administrator has global oversight and can switch branches freely
+      setCurrentBranchId(newBranchId);
+      return;
+    }
+
+    // Branch users: prompt for target branch password!
+    setTargetBranchId(newBranchId);
+    setBranchSwitchPassword('');
+    setBranchSwitchError(null);
+    setBranchSwitchSuccess(null);
+    setShowUserDropdown(false);
+    setShowBranchSwitchModal(true);
+  };
+
+  const handleBranchSwitchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setBranchSwitchError(null);
+
+    if (!targetBranch) {
+      setBranchSwitchError('Lütfen geçerli bir mağaza seçiniz.');
+      return;
+    }
+
+    const trimmedInput = branchSwitchPassword.trim();
+    if (!trimmedInput) {
+      setBranchSwitchError(`Lütfen "${targetBranch.name}" mağazasının giriş şifresini yazınız.`);
+      return;
+    }
+
+    const targetPassword = targetBranch.password?.trim() || '1122';
+    if (trimmedInput !== targetPassword) {
+      setBranchSwitchError(`Hatalı şifre! "${targetBranch.name}" mağazasının giriş şifresini kontrol ediniz.`);
+      return;
+    }
+
+    // Success: store authenticated for new branch
+    setCurrentBranchId(targetBranch.id);
+    try {
+      localStorage.setItem('esme_active_branch_id', String(targetBranch.id));
+      localStorage.setItem('esme_store_authenticated', 'true');
+    } catch {}
+
+    setBranchSwitchSuccess(`"${targetBranch.name}" mağazasına başarıyla geçiş yapıldı!`);
+    setTimeout(() => {
+      setShowBranchSwitchModal(false);
+      setBranchSwitchSuccess(null);
+      setTargetBranchId(null);
+      setBranchSwitchPassword('');
+    }, 700);
+  };
 
   return (
     <header className="sticky top-0 z-40 bg-slate-900 border-b border-slate-800 text-white shadow-xl">
@@ -298,8 +366,8 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
                       <label className="text-[11px] text-slate-400 block mb-1">Şubeniz ({branchList.length} Esme Mağazası):</label>
                       <select
                         value={currentBranchId}
-                        onChange={(e) => setCurrentBranchId(Number(e.target.value))}
-                        className="w-full bg-slate-800 border border-slate-700 text-xs text-white rounded-md p-1.5 focus:ring-1 focus:ring-red-500"
+                        onChange={(e) => handleBranchSelectChange(Number(e.target.value))}
+                        className="w-full bg-slate-800 border border-slate-700 text-xs text-white rounded-md p-1.5 focus:ring-1 focus:ring-red-500 cursor-pointer"
                       >
                         {branchList.map(b => (
                           <option key={b.id} value={b.id}>
@@ -307,6 +375,12 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
                           </option>
                         ))}
                       </select>
+                      {!isAdmin && (
+                        <p className="text-[10px] text-amber-400/90 mt-1 flex items-center gap-1">
+                          <Key className="w-2.5 h-2.5 shrink-0" />
+                          <span>Farklı şube seçildiğinde mağaza giriş şifresi istenir.</span>
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -581,6 +655,120 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
                   >
                     <Save className="w-4 h-4" />
                     <span>Şifreyi Kaydet</span>
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+      {/* BRANCH SWITCH PASSWORD VERIFICATION MODAL */}
+      {showBranchSwitchModal && targetBranch && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 shadow-2xl relative text-white">
+            <button
+              type="button"
+              onClick={() => {
+                setShowBranchSwitchModal(false);
+                setTargetBranchId(null);
+                setBranchSwitchPassword('');
+                setBranchSwitchError(null);
+                setBranchSwitchSuccess(null);
+              }}
+              className="absolute right-4 top-4 p-1.5 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl bg-red-600/20 border border-red-500/30 flex items-center justify-center text-red-400">
+                <Building2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  Şube Değiştirme Doğrulaması
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Her mağazanın girişi ve tebellüğü kendine özeldir
+                </p>
+              </div>
+            </div>
+
+            {/* Current vs Target Store Card */}
+            <div className="p-3 rounded-2xl bg-slate-800/80 border border-slate-700/80 mb-4 text-xs space-y-2">
+              <div className="flex items-center justify-between text-slate-400">
+                <span>Mevcut Şubeniz:</span>
+                <span className="font-bold text-slate-300">{currentBranch.name}</span>
+              </div>
+              <div className="flex items-center justify-between pt-1.5 border-t border-slate-700/60">
+                <span className="text-red-400 font-semibold">Geçiş Yapılacak Şube:</span>
+                <span className="font-bold text-white bg-red-950/60 border border-red-500/40 px-2 py-0.5 rounded-lg">
+                  {targetBranch.name} ({targetBranch.city || 'Merkez'})
+                </span>
+              </div>
+            </div>
+
+            {branchSwitchSuccess ? (
+              <div className="p-4 rounded-2xl bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                <span className="font-bold">{branchSwitchSuccess}</span>
+              </div>
+            ) : (
+              <form onSubmit={handleBranchSwitchSubmit} className="space-y-3.5 text-xs">
+                {branchSwitchError && (
+                  <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300 font-semibold flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                    <span>{branchSwitchError}</span>
+                  </div>
+                )}
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-slate-300 block">
+                      "{targetBranch.name}" Giriş Şifresi:
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowSwitchPasswordText(!showSwitchPasswordText)}
+                      className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
+                    >
+                      {showSwitchPasswordText ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      <span>{showSwitchPasswordText ? 'Gizle' : 'Göster'}</span>
+                    </button>
+                  </div>
+                  <input
+                    type={showSwitchPasswordText ? 'text' : 'password'}
+                    autoFocus
+                    required
+                    value={branchSwitchPassword}
+                    onChange={(e) => setBranchSwitchPassword(e.target.value)}
+                    placeholder="Mağazanın giriş şifresini yazınız"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 font-mono font-bold text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Güvenlik gereği her mağazanın paneli ve sınav kayıtları ayrı şifrelenmiştir.
+                  </p>
+                </div>
+
+                <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowBranchSwitchModal(false);
+                      setTargetBranchId(null);
+                      setBranchSwitchPassword('');
+                      setBranchSwitchError(null);
+                    }}
+                    className="px-3.5 py-2 rounded-xl text-slate-400 hover:text-white font-bold cursor-pointer"
+                  >
+                    Vazgeç
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold flex items-center gap-2 shadow-lg shadow-red-600/30 cursor-pointer"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    <span>Doğrula ve Şubeye Giriş Yap</span>
                   </button>
                 </div>
               </form>

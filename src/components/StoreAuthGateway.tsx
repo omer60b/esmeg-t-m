@@ -224,6 +224,7 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
                 value={selectedBranchId}
                 onChange={(e) => {
                   setSelectedBranchId(Number(e.target.value));
+                  setPassword('');
                   setError(null);
                   setSuccessNotice(null);
                 }}

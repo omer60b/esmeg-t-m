@@ -18,10 +18,7 @@ export const initialTrainings: TrainingDocument[] = [
     badgeText: '17 Altın Madde',
     summary: 'Mağazalarımızda yürütülen kasa, müşteri cari, fatura ve operasyonel süreçlerde sıfır hata prensibinin sağlanması için 17 zorunlu kural.',
     pdfPath: '/assets/aistudio/Bilgi___lem_ve_Kasa_Y_netimi_Genel_E_itim_Talimat__085ba22b.pdf',
-    videoType: 'link',
-    videoUrl: 'https://www.youtube.com/watch?v=0kP0aW4l6bM',
-    videoTitle: 'Kasa ve Cari Süreçleri Standart Operasyon Videosu',
-    videoDuration: '06:45',
+    videoType: 'none',
     chapters: [
       {
         id: 'c1',
@@ -126,10 +123,7 @@ export const initialTrainings: TrainingDocument[] = [
     badgeText: 'Yasal Uyarı & Cezai Yaptırım',
     summary: 'Kasa, ERP sistem ekranları, müşteri evrakları ve banko görsellerinin sosyal medyada paylaşılmasının yasal sonuçları ve mutlak yasaklar.',
     pdfPath: '/assets/aistudio/Bilgi_G_venli_i__KVKK_ve_Kurumsal_Payla__mlar_Talimatnamesi_e0f3bfc8.pdf',
-    videoType: 'link',
-    videoUrl: 'https://www.youtube.com/watch?v=inWWhr5tnEA',
-    videoTitle: 'KVKK ve Kurumsal Gizlilik Eğitimi',
-    videoDuration: '05:12',
+    videoType: 'none',
     chapters: [
       {
         id: 'kv1',
@@ -212,10 +206,7 @@ export const initialTrainings: TrainingDocument[] = [
     badgeText: 'Sıfır Hata Protokolü',
     summary: 'Aynı gün iptal ile gün sonu sonrası iade ayrımı, kısmi iade kuralları, esme.com.tr internet satışı ve Tüketici Hakem Heyeti ibraname süreci.',
     pdfPath: '/assets/aistudio/Kredi_Kart____lemleri_Uygulama_ve_Denetim_Talimat__987fed7c.pdf',
-    videoType: 'link',
-    videoUrl: 'https://www.youtube.com/watch?v=60ItHLz5WEA',
-    videoTitle: 'Kredi Kartı POS İptal ve İade Operasyon Eğitimi',
-    videoDuration: '08:20',
+    videoType: 'none',
     chapters: [
       {
         id: 'kk1',
@@ -285,10 +276,7 @@ export const initialTrainings: TrainingDocument[] = [
     badgeText: 'Kritik Hesap: 38702',
     summary: 'Müşteriye nakit çıkışı yapılmayıp IBAN üzerinden EFT/Havale ile yapılacak iadelerde zorunlu şube seçimi ve bildirim şablonu.',
     pdfPath: '/assets/aistudio/Banka_Havalesi_ve_EFT__ade_S_re__Talimat__62b98dc9.pdf',
-    videoType: 'link',
-    videoUrl: 'https://www.youtube.com/watch?v=kJQP7kiw5Fk',
-    videoTitle: 'Havale ve EFT İade Adımları',
-    videoDuration: '04:18',
+    videoType: 'none',
     chapters: [
       {
         id: 'bnk1',
@@ -345,10 +333,7 @@ export const initialTrainings: TrainingDocument[] = [
     badgeText: 'Kasa Disiplini',
     summary: 'Kasada fazla para çıkması kazanç değildir; fiili nakit sayımı, fazlanın tamamının bankaya yatırılması ve aynı gün bildirim protokolü.',
     pdfPath: '/assets/aistudio/Kasa_Eksik_ve_Fazla_Para_Y_netim_Talimatnamesi_47fed698.pdf',
-    videoType: 'link',
-    videoUrl: 'https://www.youtube.com/watch?v=L_LUpnjgPso',
-    videoTitle: 'Kasa Mutabakatı ve Fark Yönetimi Eğitimi',
-    videoDuration: '05:40',
+    videoType: 'none',
     chapters: [
       {
         id: 'ks1',
@@ -414,10 +399,7 @@ export const initialTrainings: TrainingDocument[] = [
     badgeText: '3\'lü Islak İmza Şartı',
     summary: 'Hatalı taksit tahsilatlarının düzeltilmesinde A4 el yazısı dilekçe, 3\'lü ıslak imza zinciri ve kırmızı "İPTAL" kaşesi zorunluluğu.',
     pdfPath: '/assets/aistudio/_deme_D_zeltme_ve_Hatal__Taksit__ptal_Talimatnamesi_bc66aa27.pdf',
-    videoType: 'link',
-    videoUrl: 'https://www.youtube.com/watch?v=3JZ_D3ELwOQ',
-    videoTitle: 'Hatalı Taksit İptal ve El Yazısı Dilekçe Prosedürü',
-    videoDuration: '07:15',
+    videoType: 'none',
     chapters: [
       {
         id: 'od1',
@@ -488,10 +470,7 @@ export const initialTrainings: TrainingDocument[] = [
     badgeText: 'Çok Acele / Gecikmesiz',
     summary: 'İcra, mahkeme ve kamu kurumlarından gelen tebligatlarda hak düşürücü yasal süreler ve aynı saat içerisinde Arife Hanım\'a iletim zorunluluğu.',
     pdfPath: '/assets/aistudio/Resmi_Evrak_ve_Tebligat_Y_netim_Talimat__d1a97de3.pdf',
-    videoType: 'link',
-    videoUrl: 'https://www.youtube.com/watch?v=fJ9rUzIMcZQ',
-    videoTitle: 'Hukuki Tebligat ve İcra Evrakları Yönetimi',
-    videoDuration: '04:50',
+    videoType: 'none',
     chapters: [
       {
         id: 'tb1',
@@ -552,10 +531,7 @@ export const initialTrainings: TrainingDocument[] = [
     badgeText: 'IMEI Envanter Dökümü',
     summary: 'Mağazalarımızdaki IMEI kayıtlı cep telefonlarının fiziki stok kontrolleri ve periyodik sayımları için ERP üzerinden hatasız 4 adımlı rapor dökümü.',
     pdfPath: '/assets/aistudio/_meili_Cep_Telefonu_Envanteri_D_kme_E_itim_K_lavuzu_c25e3b44.pdf',
-    videoType: 'link',
-    videoUrl: 'https://www.youtube.com/watch?v=M576WGiDBdQ',
-    videoTitle: 'ERP Üzerinden IMEI Bazlı Telefon Sayım ve Envanter Eğitimi',
-    videoDuration: '06:10',
+    videoType: 'none',
     chapters: [
       {
         id: 'imei1',
@@ -622,10 +598,7 @@ export const initialTrainings: TrainingDocument[] = [
     badgeText: 'Sıfır Tolerans & Çift Onay',
     summary: 'Motosiklet satışında şase-motor no formatı, Turgut B. ve Aselin H. zorunlu çift onayı, GİB e-Tebligat şartı ve plakasız teslimat yasağı.',
     pdfPath: '/assets/aistudio/Motor_Sat____Faturalama_ve_Teslimat_S_reci_Y_nergesi_bf7afb54.pdf',
-    videoType: 'link',
-    videoUrl: 'https://www.youtube.com/watch?v=21X5lGlDOfg',
-    videoTitle: 'Motor Satış, Noter Tescil ve Depo Teslimat Standartları',
-    videoDuration: '09:30',
+    videoType: 'none',
     chapters: [
       {
         id: 'mtr1',
@@ -709,10 +682,7 @@ export const initialTrainings: TrainingDocument[] = [
     badgeText: 'Fiziki Karne Yönetimi',
     summary: 'Sunny marka motorlarda online sistem olmaması nedeniyle fiziki karne yönetimi, manuel fatura girişi ve hafta sonu fatura kesim yasağı.',
     pdfPath: '/assets/aistudio/Sunny_Motor_Sat___ve_Fatura_S_re__Talimat__e151ec1e.pdf',
-    videoType: 'link',
-    videoUrl: 'https://www.youtube.com/watch?v=JGwWNGJdvx8',
-    videoTitle: 'Sunny Motosiklet Karne Kontrol ve Fatura Düzenleme',
-    videoDuration: '05:35',
+    videoType: 'none',
     chapters: [
       {
         id: 'sn1',
@@ -773,10 +743,7 @@ export const initialTrainings: TrainingDocument[] = [
     badgeText: 'Risk Politikası',
     summary: '25 yaş şartı, en az 2 yıllık aktif Esme müşterisi olma veya kefil zorunluluğu, icra kaydı yasağı ve 12P Ay ödeme şablonu.',
     pdfPath: '/assets/aistudio/Motor_Sat____Kredi__stihbarat_ve_Teslimat_Talimatnamesi_6bd29342.pdf',
-    videoType: 'link',
-    videoUrl: 'https://www.youtube.com/watch?v=lTRiuFIWV54',
-    videoTitle: 'Motor Satışı İstihbarat ve Risk Kriterleri',
-    videoDuration: '04:45',
+    videoType: 'none',
     chapters: [
       {
         id: 'ist1',
@@ -850,10 +817,7 @@ export const initialTrainings: TrainingDocument[] = [
     isPresentation: true,
     summary: 'Ömer BAŞ ve Turgut CESUR tarafından hazırlanan resmi Depocu Eğitim ve Görev Tanımı Kitapçığı interaktif sunumu: Temel depo ve envanter görevleri (1-5), kayıp önleme ve satış destek (6-9), operasyonel 10 altın kural, sevkiyat aracına ürün atama, DSIC el terminali 4 ekran adımı, Nebim V3 ERP ürün ekstresi kontrolü, sipariş girişi/mağazalar arası transfer ve cep telefonu teslimat kuralları.',
     pdfPath: '/assets/aistudio/ESME_Depocu_E_itim_ve_G_rev_Tan_m__Sunum_Kitap_____dcab1f65.pdf',
-    videoType: 'link',
-    videoUrl: 'https://www.youtube.com/watch?v=uelHwf8o7_U',
-    videoTitle: 'Depocu Eğitim ve Görev Tanımı Kitapçığı Video Anlatımı',
-    videoDuration: '10:15',
+    videoType: 'none',
     slides: [
       {
         id: 1,
