@@ -9,10 +9,13 @@ import {
   GraduationCap, 
   Eye, 
   EyeOff,
-  Sparkles
+  Key,
+  CheckCircle2,
+  X,
+  Save
 } from 'lucide-react';
 import { Branch } from '../types';
-import { getStoredBranches } from '../services/branchStorage';
+import { getStoredBranches, updateBranchPassword } from '../services/branchStorage';
 
 interface StoreAuthGatewayProps {
   branches?: Branch[];
@@ -31,18 +34,39 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
   initialPersonnel = '',
   appTheme = 'sepia'
 }) => {
-  const branchList = (propsBranches && propsBranches.length > 0) ? propsBranches : getStoredBranches();
+  const [branchList, setBranchList] = useState<Branch[]>(() => {
+    return (propsBranches && propsBranches.length > 0) ? propsBranches : getStoredBranches();
+  });
+
   const [selectedBranchId, setSelectedBranchId] = useState<number>(initialBranchId);
   const [personnelName, setPersonnelName] = useState<string>(initialPersonnel || '');
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
+
+  // Password Change Modal State for Store User
+  const [showChangeModal, setShowChangeModal] = useState<boolean>(false);
+  const [changeOldPassword, setChangeOldPassword] = useState<string>('');
+  const [changeNewPassword, setChangeNewPassword] = useState<string>('');
+  const [changeConfirmPassword, setChangeConfirmPassword] = useState<string>('');
+  const [showOldPassword, setShowOldPassword] = useState<boolean>(false);
+  const [showNewPassword, setShowNewPassword] = useState<boolean>(false);
+  const [changeModalError, setChangeModalError] = useState<string | null>(null);
+
+  // Sync if propsBranches changes
+  React.useEffect(() => {
+    if (propsBranches && propsBranches.length > 0) {
+      setBranchList(propsBranches);
+    }
+  }, [propsBranches]);
 
   const selectedBranch = branchList.find(b => b.id === selectedBranchId) || branchList[0];
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccessNotice(null);
 
     if (!selectedBranchId || !selectedBranch) {
       setError('Lütfen mağazanızı seçiniz.');
@@ -55,7 +79,7 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
       return;
     }
 
-    // Target store password configured by admin (defaults to '1122')
+    // Target store password (defaults to '1122' internally, never shown on screen)
     const targetPassword = selectedBranch.password?.trim() || '1122';
 
     if (trimmedPassword !== targetPassword) {
@@ -65,6 +89,54 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
 
     const finalPersonnel = personnelName.trim() || `${selectedBranch.name} Sorumlusu`;
     onSuccess(selectedBranch.id, finalPersonnel);
+  };
+
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setChangeModalError(null);
+
+    if (!selectedBranch) {
+      setChangeModalError('Lütfen bir mağaza seçiniz.');
+      return;
+    }
+
+    const trimmedOld = changeOldPassword.trim();
+    const trimmedNew = changeNewPassword.trim();
+    const trimmedConfirm = changeConfirmPassword.trim();
+
+    const currentPwd = selectedBranch.password?.trim() || '1122';
+
+    if (!trimmedOld) {
+      setChangeModalError('Lütfen mevcut mağaza şifrenizi giriniz.');
+      return;
+    }
+
+    if (trimmedOld !== currentPwd) {
+      setChangeModalError('Mevcut şifre hatalı! Lütfen geçerli mağaza şifrenizi giriniz.');
+      return;
+    }
+
+    if (!trimmedNew || trimmedNew.length < 3) {
+      setChangeModalError('Yeni şifre en az 3 karakterden oluşmalıdır.');
+      return;
+    }
+
+    if (trimmedNew !== trimmedConfirm) {
+      setChangeModalError('Girdiğiniz yeni şifreler birbiriyle eşleşmiyor.');
+      return;
+    }
+
+    // Update password in storage & cloud
+    const updatedBranches = await updateBranchPassword(selectedBranch.id, trimmedNew);
+    setBranchList(updatedBranches);
+
+    // Reset modal states
+    setShowChangeModal(false);
+    setChangeOldPassword('');
+    setChangeNewPassword('');
+    setChangeConfirmPassword('');
+    setPassword(trimmedNew); // Pre-fill with the new password
+    setSuccessNotice(`"${selectedBranch.name}" şifresi başarıyla değiştirildi! Yeni şifrenizle giriş yapabilirsiniz.`);
   };
 
   const isDark = appTheme === 'dark';
@@ -114,16 +186,24 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
               <div>
                 <h2 className="text-base font-extrabold">Mağaza Girişi</h2>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Mağazanızı seçip şifrenizle sistemi açınız
+                  Mağazanız ve şifrenizle sistemi açınız
                 </p>
               </div>
             </div>
 
-            <div className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300/50">
-              <Sparkles className="w-3 h-3 text-emerald-500" />
-              <span>Giriş Şifresi</span>
+            <div className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-red-50 text-red-700 dark:bg-red-950/80 dark:text-red-300 border border-red-300/50">
+              <ShieldCheck className="w-3.5 h-3.5 text-red-600" />
+              <span>Güvenli Giriş</span>
             </div>
           </div>
+
+          {/* Success Notice if password was changed */}
+          {successNotice && (
+            <div className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs flex items-start gap-2.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span className="font-bold">{successNotice}</span>
+            </div>
+          )}
 
           <form onSubmit={handleLogin} className="space-y-4">
             
@@ -145,6 +225,7 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
                 onChange={(e) => {
                   setSelectedBranchId(Number(e.target.value));
                   setError(null);
+                  setSuccessNotice(null);
                 }}
                 className={`w-full rounded-xl p-3 text-xs font-bold border transition focus:outline-none focus:ring-2 focus:ring-red-500 ${
                   isDark 
@@ -188,15 +269,23 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
 
             {/* Step 3: Store Password */}
             <div>
-              <label className="text-xs font-bold block mb-1.5 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-bold flex items-center gap-1.5">
                   <Lock className="w-3.5 h-3.5 text-red-600" />
                   3. Mağaza Giriş Şifresi:
-                </span>
-                <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                  {selectedBranch?.password === '1122' || !selectedBranch?.password ? 'Varsayılan Şifre: 1122' : 'Özel Şifre'}
-                </span>
-              </label>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setChangeModalError(null);
+                    setShowChangeModal(true);
+                  }}
+                  className="text-[11px] font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Key className="w-3 h-3" />
+                  <span>Şifre Değiştir</span>
+                </button>
+              </div>
 
               <div className="relative">
                 <input
@@ -206,7 +295,7 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
                     setPassword(e.target.value);
                     if (error) setError(null);
                   }}
-                  placeholder="Mağaza şifresini giriniz (Varsayılan: 1122)"
+                  placeholder="Mağaza giriş şifresini giriniz"
                   maxLength={20}
                   autoComplete="current-password"
                   autoFocus
@@ -247,15 +336,27 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
             </button>
           </form>
 
-          {/* Footer Option: Admin Login */}
-          <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 text-center">
+          {/* Footer Options */}
+          <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => {
+                setChangeModalError(null);
+                setShowChangeModal(true);
+              }}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer"
+            >
+              <Key className="w-3.5 h-3.5" />
+              <span>Mağaza Şifresini Değiştir</span>
+            </button>
+
             <button
               type="button"
               onClick={onOpenAdminAuth}
               className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
             >
               <ShieldCheck className="w-4 h-4" />
-              <span>Yönetici / Yetkili Girişi Yap</span>
+              <span>Yönetici Girişi</span>
             </button>
           </div>
         </div>
@@ -266,6 +367,122 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
         </p>
 
       </div>
+
+      {/* CHANGE STORE PASSWORD MODAL FOR STORE USERS */}
+      {showChangeModal && selectedBranch && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl relative">
+            <button
+              type="button"
+              onClick={() => setShowChangeModal(false)}
+              className="absolute right-4 top-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-600">
+                <Key className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">
+                  Mağaza Şifresini Değiştir
+                </h3>
+                <p className="text-xs text-slate-500 truncate max-w-[200px]">
+                  {selectedBranch.name} ({selectedBranch.code})
+                </p>
+              </div>
+            </div>
+
+            {changeModalError && (
+              <div className="mb-4 p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{changeModalError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleChangePasswordSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block">
+                    Mevcut Mağaza Şifreniz:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowOldPassword(!showOldPassword)}
+                    className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    {showOldPassword ? 'Gizle' : 'Göster'}
+                  </button>
+                </div>
+                <input
+                  type={showOldPassword ? 'text' : 'password'}
+                  required
+                  value={changeOldPassword}
+                  onChange={(e) => setChangeOldPassword(e.target.value)}
+                  placeholder="Mevcut şifrenizi giriniz"
+                  autoFocus
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono font-bold text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block">
+                    Yeni Mağaza Şifresi:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    {showNewPassword ? 'Gizle' : 'Göster'}
+                  </button>
+                </div>
+                <input
+                  type={showNewPassword ? 'text' : 'password'}
+                  required
+                  value={changeNewPassword}
+                  onChange={(e) => setChangeNewPassword(e.target.value)}
+                  placeholder="Yeni şifrenizi belirleyiniz"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono font-bold text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  Yeni Şifre (Tekrar):
+                </label>
+                <input
+                  type={showNewPassword ? 'text' : 'password'}
+                  required
+                  value={changeConfirmPassword}
+                  onChange={(e) => setChangeConfirmPassword(e.target.value)}
+                  placeholder="Yeni şifrenizi tekrar yazınız"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono font-bold text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowChangeModal(false)}
+                  className="px-3 py-2 rounded-xl text-slate-600 dark:text-slate-400 font-bold cursor-pointer"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold flex items-center gap-1.5 shadow cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Şifremi Güncelle</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -355,6 +355,7 @@ export default function App() {
           onOpenAdminAuth={() => setShowAdminAuthModal(true)}
           branches={branches}
           onStoreLogout={handleStoreLogout}
+          onUpdateBranchPassword={handleUpdateBranchPassword}
           totalCount={trainings.length}
           bilgiIslemCount={bilgiIslemCount}
           depocuCount={depocuCount}

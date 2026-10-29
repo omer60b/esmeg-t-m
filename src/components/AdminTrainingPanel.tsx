@@ -1342,7 +1342,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                 Mağaza Açma, Düzenleme & Giriş Şifreleri
               </h3>
               <p className="text-xs text-slate-300 max-w-xl mt-1">
-                Yeni mağazalar tanımlayın, mağaza kodlarını ve isimlerini güncelleyin ve personellerin sisteme erişim şifrelerini belirleyin (Standart şifre: 1122).
+                Yeni mağazalar tanımlayın, mağaza kodlarını ve isimlerini güncelleyin ve personellerin sisteme erişim şifrelerini belirleyin.
               </p>
             </div>
 
@@ -1361,10 +1361,10 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                 type="button"
                 onClick={handleResetAllPasswordsPrompt}
                 className="px-3.5 py-2.5 rounded-xl bg-amber-900/60 hover:bg-amber-800 border border-amber-700/60 text-amber-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
-                title="Tüm mağaza şifrelerini 1122 olarak eşitle"
+                title="Tüm mağaza şifrelerini eşitle"
               >
                 <Key className="w-4 h-4 text-amber-400" />
-                <span>Tüm Şifreleri 1122 Yap</span>
+                <span>Şifreleri Varsayılana Sıfırla</span>
               </button>
 
               <button
@@ -1391,7 +1391,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
             </div>
 
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-              <span className="text-[11px] font-bold text-slate-500 block mb-1">Standart Şifreli (1122)</span>
+              <span className="text-[11px] font-bold text-slate-500 block mb-1">Standart Şifreli</span>
               <div className="flex items-center justify-between">
                 <span className="text-2xl font-black text-emerald-600">
                   {localBranches.filter(b => !b.password || b.password === '1122').length}
@@ -1470,7 +1470,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                 }`}
               >
-                1122 Şifreli ({localBranches.filter(b => !b.password || b.password === '1122').length})
+                Standart Şifreli ({localBranches.filter(b => !b.password || b.password === '1122').length})
               </button>
               <button
                 type="button"
@@ -1563,7 +1563,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                               </span>
                               {isDefaultPwd ? (
                                 <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1">
-                                  <Check className="w-3 h-3" /> Standart (1122)
+                                  <Check className="w-3 h-3" /> Standart Şifre
                                 </span>
                               ) : (
                                 <span className="text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-300/40">
@@ -1619,7 +1619,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                 Mağazaları ve Şifreleri Fabrika Ayarlarına Döndür
               </h5>
               <p className="text-xs text-slate-500 mt-0.5">
-                Özel açılan mağazaları temizler ve tüm 35 resmi Esme şubesini standart 1122 şifresiyle geri yükler.
+                Özel açılan mağazaları temizler ve tüm 35 resmi Esme şubesini standart şifresiyle geri yükler.
               </p>
             </div>
             <button
@@ -1720,14 +1720,6 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setBranchPasswordInput('1122')}
-                      className="text-[11px] text-emerald-600 hover:underline font-semibold cursor-pointer"
-                    >
-                      1122 Yap
-                    </button>
-                    <span className="text-slate-300 dark:text-slate-700">•</span>
-                    <button
-                      type="button"
                       onClick={() => setShowBranchPasswordText(!showBranchPasswordText)}
                       className="text-[11px] text-amber-600 hover:underline font-semibold cursor-pointer"
                     >
@@ -1742,7 +1734,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                     required
                     value={branchPasswordInput}
                     onChange={(e) => setBranchPasswordInput(e.target.value)}
-                    placeholder="Mağaza giriş şifresi (Örn: 1122)"
+                    placeholder="Mağaza giriş şifresini belirleyiniz"
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono font-bold pr-10 text-slate-900 dark:text-white tracking-wider"
                   />
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -1750,7 +1742,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                   </div>
                 </div>
                 <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
-                  Bu mağazanın personelleri portala girerken bu şifreyi yazacaktır (Varsayılan: 1122).
+                  Bu mağazanın personelleri portala girerken bu şifreyi yazacaktır.
                 </p>
               </div>
 
@@ -1810,14 +1802,6 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setQuickPasswordValue('1122')}
-                      className="text-[11px] text-emerald-600 hover:underline font-semibold cursor-pointer"
-                    >
-                      1122 Yap
-                    </button>
-                    <span className="text-slate-300 dark:text-slate-700">•</span>
-                    <button
-                      type="button"
                       onClick={() => setShowQuickPasswordText(!showQuickPasswordText)}
                       className="text-[11px] text-amber-600 hover:underline font-semibold cursor-pointer"
                     >
@@ -1832,7 +1816,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                     required
                     value={quickPasswordValue}
                     onChange={(e) => setQuickPasswordValue(e.target.value)}
-                    placeholder="Şifre yazınız (Varsayılan: 1122)"
+                    placeholder="Yeni şifreyi yazınız"
                     autoFocus
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono font-bold pr-10 text-slate-900 dark:text-white tracking-wider"
                   />
