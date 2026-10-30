@@ -149,35 +149,53 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
     if (!editingTraining) return;
     const trimmed = editVideoUrl.trim();
 
-    if (onQuickUpdateVideo) {
-      await onQuickUpdateVideo(
-        editingTraining.id, 
-        trimmed, 
-        editVideoTitle.trim() || editingTraining.title,
-        editVideoDuration.trim() || '05:00'
-      );
+    if (trimmed) {
+      if (onQuickUpdateVideo) {
+        await onQuickUpdateVideo(
+          editingTraining.id, 
+          trimmed, 
+          editVideoTitle.trim() || editingTraining.title,
+          editVideoDuration.trim() || '05:00'
+        );
+      }
+      setActiveTrainingId(editingTraining.id);
+      setCustomVideoSrc(null);
+      setCustomVideoName(null);
+      setQuickAssignSuccess(`"${editingTraining.title}" eğitimine video bağlantısı kaydedildi ve kullanıcılara yayınlandı!`);
+    } else {
+      if (onDeleteVideo) {
+        await onDeleteVideo(editingTraining.id);
+      } else if (onQuickUpdateVideo) {
+        await onQuickUpdateVideo(editingTraining.id, '');
+      }
+      setQuickAssignSuccess(`"${editingTraining.title}" eğitiminden video bağlantısı kaldırıldı.`);
     }
 
     setEditingTraining(null);
-    setQuickAssignSuccess(trimmed 
-      ? `"${editingTraining.title}" eğitimine video bağlantısı kaydedildi ve kullanıcılara yayınlandı!`
-      : `"${editingTraining.title}" eğitiminden video bağlantısı kaldırıldı.`
-    );
     setTimeout(() => setQuickAssignSuccess(null), 5000);
   };
 
   // Confirm delete video
   const handleConfirmDeleteVideo = async () => {
     if (!deletingVideoTraining) return;
+    const deletedId = deletingVideoTraining.id;
     const title = deletingVideoTraining.title;
     
     if (onDeleteVideo) {
-      await onDeleteVideo(deletingVideoTraining.id);
+      await onDeleteVideo(deletedId);
     } else if (onQuickUpdateVideo) {
-      await onQuickUpdateVideo(deletingVideoTraining.id, '');
+      await onQuickUpdateVideo(deletedId, '');
     }
 
     setDeletingVideoTraining(null);
+    setCustomVideoSrc(null);
+    setCustomVideoName(null);
+
+    const remaining = videoTrainings.filter(t => t.id !== deletedId);
+    if (remaining.length > 0) {
+      setActiveTrainingId(remaining[0].id);
+    }
+
     setQuickAssignSuccess(`"${title}" konusuna ait video yayından kaldırıldı.`);
     setTimeout(() => setQuickAssignSuccess(null), 5000);
   };

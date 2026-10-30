@@ -546,7 +546,7 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
 
           {/* Book Chapters & Rules */}
           <div className={`space-y-6 ${fontStyles[fontSize]}`}>
-            {currentBook.chapters.map((chap, cIdx) => (
+            {(currentBook.chapters || []).map((chap, cIdx) => (
               <section key={chap.id} className="space-y-3 pt-2">
                 <h3
                   className={`text-base sm:text-lg font-extrabold border-b pb-1.5 flex items-center gap-2 ${

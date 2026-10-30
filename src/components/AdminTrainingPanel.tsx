@@ -256,9 +256,9 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     const updated: TrainingDocument = {
       ...quickVideoTraining,
       videoType: trimmed ? 'link' : 'none',
-      videoUrl: trimmed || undefined,
-      videoTitle: quickVideoTitleInput.trim() || quickVideoTraining.title,
-      videoDuration: quickVideoDurationInput.trim() || '05:00',
+      videoUrl: trimmed,
+      videoTitle: trimmed ? (quickVideoTitleInput.trim() || quickVideoTraining.title) : '',
+      videoDuration: trimmed ? (quickVideoDurationInput.trim() || '05:00') : '',
       updatedAt: new Date().toISOString()
     };
     onSaveTraining(updated);
@@ -267,6 +267,22 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
       ? `"${quickVideoTraining.title}" eğitimine YouTube video linki kaydedildi ve tüm kullanıcılara anlık yayınlandı!`
       : `"${quickVideoTraining.title}" eğitiminden video bağlantısı kaldırıldı.`
     );
+  };
+
+  const handleDeleteQuickVideo = () => {
+    if (!quickVideoTraining) return;
+    const title = quickVideoTraining.title;
+    const updated: TrainingDocument = {
+      ...quickVideoTraining,
+      videoType: 'none',
+      videoUrl: '',
+      videoTitle: '',
+      videoDuration: '',
+      updatedAt: new Date().toISOString()
+    };
+    onSaveTraining(updated);
+    setShowQuickVideoModal(false);
+    showNotice(`"${title}" eğitimine ait video başarıyla silindi ve yayından kaldırıldı.`);
   };
 
   // Open modal in create branch mode
@@ -1895,21 +1911,33 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowQuickVideoModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold cursor-pointer"
-                >
-                  Vazgeç
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold transition shadow-md shadow-red-600/30 flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>Kaydet & Anlık Yayınla</span>
-                </button>
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                {quickVideoTraining.videoUrl && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteQuickVideo}
+                    className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white dark:bg-rose-950/60 dark:hover:bg-rose-600 dark:text-rose-400 dark:hover:text-white border border-rose-200 dark:border-rose-900 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Videoyu Sil</span>
+                  </button>
+                )}
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickVideoModal(false)}
+                    className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold cursor-pointer"
+                  >
+                    Vazgeç
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold transition shadow-md shadow-red-600/30 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Kaydet & Anlık Yayınla</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>

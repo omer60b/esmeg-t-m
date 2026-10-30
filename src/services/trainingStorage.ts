@@ -57,6 +57,32 @@ export function isLegacySampleVideo(url?: string | null): boolean {
   return clean.includes('commondatastorage.googleapis.com') || clean.includes('gtv-videos-bucket');
 }
 
+function cleanChapterForFirestore(ch: any) {
+  if (!ch) return ch;
+  const copy = { ...ch };
+  if (copy.tableData && Array.isArray(copy.tableData.rows)) {
+    copy.tableData = {
+      headers: copy.tableData.headers || [],
+      rowsJson: JSON.stringify(copy.tableData.rows)
+    };
+  }
+  return copy;
+}
+
+function restoreChapterFromFirestore(ch: any) {
+  if (!ch) return ch;
+  const copy = { ...ch };
+  if (copy.tableData && copy.tableData.rowsJson && !copy.tableData.rows) {
+    try {
+      copy.tableData = {
+        headers: copy.tableData.headers || [],
+        rows: JSON.parse(copy.tableData.rowsJson)
+      };
+    } catch {}
+  }
+  return copy;
+}
+
 /**
  * Ensures a training object is safe to write to a single Firestore document (< 850KB)
  */
@@ -64,14 +90,21 @@ function sanitizeTrainingForFirestore(t: TrainingDocument): TrainingDocument {
   const isLegacy = isLegacySampleVideo(t.videoUrl);
   const cleanVideoUrl = isLegacy ? '' : (t.videoUrl?.trim() ?? '');
   const hasVideo = cleanVideoUrl !== '';
-  const copy: TrainingDocument = JSON.parse(JSON.stringify({
+  const cleanChapters = (t.chapters || []).map(cleanChapterForFirestore);
+
+  const copy: TrainingDocument = {
     ...t,
+    subTitle: t.subTitle || '',
+    scope: t.scope || '',
     videoType: hasVideo ? (t.videoType && t.videoType !== 'none' ? t.videoType : 'link') : 'none',
     videoUrl: cleanVideoUrl,
     videoTitle: hasVideo ? (t.videoTitle || t.title) : '',
     videoDuration: hasVideo ? (t.videoDuration || '05:00') : '',
-    pdfPath: t.pdfPath ?? ''
-  }));
+    pdfPath: t.pdfPath ?? '',
+    chapters: cleanChapters,
+    quiz: t.quiz || [],
+    slides: t.slides || []
+  };
 
   // Guard against base64 files exceeding Firestore's 1MB document limit
   if (copy.videoUrl && copy.videoUrl.startsWith('data:') && copy.videoUrl.length > 650000) {
@@ -98,6 +131,8 @@ function sanitizeCatalogForFirestore(list: TrainingDocument[]): any[] {
       id: t.id,
       docNo: t.docNo,
       title: t.title,
+      subTitle: t.subTitle || '',
+      scope: t.scope || '',
       category: t.category,
       priority: t.priority,
       iconName: t.iconName,
@@ -143,7 +178,7 @@ export function mergeTrainingsList(
 
   initialTrainings.forEach(t => {
     if (!deletedIds.has(t.id)) {
-      defaultMap.set(t.id, t);
+      defaultMap.set(t.id, { ...t });
     }
   });
 
@@ -154,55 +189,46 @@ export function mergeTrainingsList(
     const cleanVideoUrl = isLegacy ? '' : (t.videoUrl?.trim() ?? '');
     const hasIncomingVideo = cleanVideoUrl !== '';
 
+    // Restore any chapters table data if needed
+    const restoredChapters = (t.chapters && t.chapters.length > 0)
+      ? t.chapters.map(restoreChapterFromFirestore)
+      : undefined;
+
     if (defaultMap.has(t.id)) {
       const existing = defaultMap.get(t.id)!;
-      const hasExistingVideo = Boolean(existing.videoUrl && existing.videoUrl.trim() !== '');
-      let mergedVideoUrl = existing.videoUrl || '';
-      let mergedVideoType = existing.videoType || 'none';
-      let mergedVideoTitle = existing.videoTitle;
-      let mergedVideoDuration = existing.videoDuration;
-
-      if (hasIncomingVideo) {
-        mergedVideoUrl = cleanVideoUrl;
-        mergedVideoType = t.videoType && t.videoType !== 'none' ? t.videoType : 'link';
-        mergedVideoTitle = t.videoTitle || t.title || existing.title;
-        mergedVideoDuration = t.videoDuration || '05:00';
-      } else if (hasExistingVideo) {
-        const isStrictlyNewer = Boolean(t.updatedAt && existing.updatedAt && t.updatedAt > existing.updatedAt);
-        if (isStrictlyNewer && t.videoUrl === '' && t.videoType === 'none') {
-          mergedVideoUrl = '';
-          mergedVideoType = 'none';
-          mergedVideoTitle = undefined;
-          mergedVideoDuration = undefined;
-        } else {
-          mergedVideoUrl = existing.videoUrl!;
-          mergedVideoType = existing.videoType && existing.videoType !== 'none' ? existing.videoType : 'link';
-          mergedVideoTitle = existing.videoTitle || existing.title;
-          mergedVideoDuration = existing.videoDuration || '05:00';
-        }
-      }
 
       defaultMap.set(t.id, {
         ...existing,
         ...t,
-        videoType: mergedVideoType,
-        videoUrl: mergedVideoUrl,
-        videoTitle: mergedVideoTitle,
-        videoDuration: mergedVideoDuration,
+        subTitle: t.subTitle || existing.subTitle,
+        scope: t.scope || existing.scope,
+        videoType: hasIncomingVideo ? (t.videoType && t.videoType !== 'none' ? t.videoType : 'link') : 'none',
+        videoUrl: cleanVideoUrl,
+        videoTitle: hasIncomingVideo ? (t.videoTitle || t.title || existing.title) : '',
+        videoDuration: hasIncomingVideo ? (t.videoDuration || '05:00') : '',
         pdfPath: t.pdfPath !== undefined ? t.pdfPath : existing.pdfPath,
         category: t.category || existing.category,
-        chapters: (t.chapters && t.chapters.length > 0) ? t.chapters : existing.chapters,
+        chapters: restoredChapters || existing.chapters,
         slides: (t.slides && t.slides.length > 0) ? t.slides : existing.slides,
         quiz: (t.quiz && t.quiz.length > 0) ? t.quiz : existing.quiz,
       });
-    } else if (!initialTrainings.some(def => def.id === t.id)) {
+    } else {
+      // Custom training added by administrator
       customMap.set(t.id, {
         ...t,
         videoType: hasIncomingVideo ? (t.videoType && t.videoType !== 'none' ? t.videoType : 'link') : 'none',
-        videoUrl: hasIncomingVideo ? cleanVideoUrl : undefined,
-        videoTitle: hasIncomingVideo ? (t.videoTitle || t.title) : undefined,
-        videoDuration: hasIncomingVideo ? (t.videoDuration || '05:00') : undefined,
-        pdfPath: t.pdfPath || undefined,
+        videoUrl: cleanVideoUrl,
+        videoTitle: hasIncomingVideo ? (t.videoTitle || t.title) : '',
+        videoDuration: hasIncomingVideo ? (t.videoDuration || '05:00') : '',
+        pdfPath: t.pdfPath || '',
+        chapters: restoredChapters || t.chapters || [
+          {
+            id: 'ch_1',
+            title: 'Genel Kurallar',
+            content: t.summary || 'Genel operasyonel kurallar.'
+          }
+        ],
+        quiz: t.quiz || [],
         isCustom: true
       });
     }
@@ -735,25 +761,14 @@ export function subscribeToTrainingUpdates(
       map.set(t.id, t);
     });
 
-    // Individual collection documents always take latest precedence, while preserving catalog video if collection doc is older
+    // Individual collection documents always take latest precedence
     latestCollectionItems.forEach(t => {
       if (!t || !t.id || deletedSet.has(t.id)) return;
       const prev = map.get(t.id);
       if (prev) {
         const prevTime = prev.updatedAt || prev.createdAt || '';
         const currTime = t.updatedAt || t.createdAt || '';
-        const hasPrevVid = Boolean(prev.videoUrl && prev.videoUrl.trim() !== '');
-        const hasCurrVid = Boolean(t.videoUrl && t.videoUrl.trim() !== '');
-        let target = currTime >= prevTime ? t : prev;
-        if (!hasCurrVid && hasPrevVid) {
-          target = {
-            ...target,
-            videoUrl: prev.videoUrl,
-            videoType: prev.videoType && prev.videoType !== 'none' ? prev.videoType : 'link',
-            videoTitle: prev.videoTitle || prev.title,
-            videoDuration: prev.videoDuration || '05:00'
-          };
-        }
+        const target = currTime >= prevTime ? t : prev;
         map.set(t.id, target);
       } else {
         map.set(t.id, t);
@@ -994,18 +1009,7 @@ export async function fetchRemoteTrainings(): Promise<{
           if (prev) {
             const prevTime = prev.updatedAt || prev.createdAt || '';
             const currTime = item.updatedAt || item.createdAt || '';
-            const hasPrevVid = Boolean(prev.videoUrl && prev.videoUrl.trim() !== '');
-            const hasCurrVid = Boolean(item.videoUrl && item.videoUrl.trim() !== '');
-            let target = currTime >= prevTime ? item : prev;
-            if (!hasCurrVid && hasPrevVid) {
-              target = {
-                ...target,
-                videoUrl: prev.videoUrl,
-                videoType: prev.videoType && prev.videoType !== 'none' ? prev.videoType : 'link',
-                videoTitle: prev.videoTitle || prev.title,
-                videoDuration: prev.videoDuration || '05:00'
-              };
-            }
+            const target = currTime >= prevTime ? item : prev;
             map.set(item.id, target);
           } else {
             map.set(item.id, item);

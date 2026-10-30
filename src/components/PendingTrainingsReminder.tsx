@@ -55,7 +55,7 @@ export const PendingTrainingsReminder: React.FC<PendingTrainingsReminderProps> =
 
   // Active announcements published by managers
   const activeAnnouncements = useMemo(
-    () => announcements.filter(a => a.isActive),
+    () => (announcements || []).filter(a => a.isActive),
     [announcements]
   );
 

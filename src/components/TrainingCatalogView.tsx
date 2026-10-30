@@ -68,13 +68,13 @@ export const TrainingCatalogView: React.FC<TrainingCatalogViewProps> = ({
     // Search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const inTitle = t.title.toLowerCase().includes(q);
-      const inDocNo = t.docNo.toLowerCase().includes(q);
-      const inSummary = t.summary.toLowerCase().includes(q);
-      const inScope = t.scope.toLowerCase().includes(q);
-      const inUnit = t.targetUnit.toLowerCase().includes(q);
-      const inAuthor = t.authorOrManager.toLowerCase().includes(q);
-      const inChapters = t.chapters.some(c => c.title.toLowerCase().includes(q) || c.content.toLowerCase().includes(q));
+      const inTitle = (t.title || '').toLowerCase().includes(q);
+      const inDocNo = (t.docNo || '').toLowerCase().includes(q);
+      const inSummary = (t.summary || '').toLowerCase().includes(q);
+      const inScope = (t.scope || '').toLowerCase().includes(q);
+      const inUnit = (t.targetUnit || '').toLowerCase().includes(q);
+      const inAuthor = (t.authorOrManager || '').toLowerCase().includes(q);
+      const inChapters = (t.chapters || []).some(c => (c.title || '').toLowerCase().includes(q) || (c.content || '').toLowerCase().includes(q));
       if (!inTitle && !inDocNo && !inSummary && !inScope && !inUnit && !inAuthor && !inChapters) return false;
     }
 

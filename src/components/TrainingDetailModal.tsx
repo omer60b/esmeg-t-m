@@ -40,7 +40,8 @@ import {
   Calendar,
   UserCheck,
   Youtube,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Trash2
 } from 'lucide-react';
 import { downloadCertificatePdf } from '../utils/certificateGenerator';
 
@@ -133,7 +134,10 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
   const [quizValidationMsg, setQuizValidationMsg] = useState<string | null>(null);
 
   const isBilgiIslem = training.category === 'bilgi-islem';
-  const currentChapter = training.chapters[activeChapterIndex] || training.chapters[0];
+  const chaptersList = (training.chapters && training.chapters.length > 0)
+    ? training.chapters
+    : [{ id: 'ch_1', title: 'Genel Kurallar', content: training.summary || 'Eğitim detayları...' }];
+  const currentChapter = chaptersList[activeChapterIndex] || chaptersList[0];
 
   // Calculate Quiz Score & Pass state (Threshold: >= 4/5 or 80%)
   const correctCount = useMemo(() => {
@@ -162,12 +166,27 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
     e.preventDefault();
     if (!isAdmin) return;
     const trimmed = adminVideoUrlInput.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      await handleDeleteAdminVideo();
+      return;
+    }
     setUploadedVideoName(null);
     setVideoSrc(trimmed);
     if (onUpdateTrainingVideo) {
       await onUpdateTrainingVideo(training.id, trimmed, training.videoTitle || training.title);
       setVideoSaveMessage('Video linki kaydedildi ve tüm şube kullanıcılarına anında yayınlandı!');
+      setTimeout(() => setVideoSaveMessage(null), 4000);
+    }
+  };
+
+  const handleDeleteAdminVideo = async () => {
+    if (!isAdmin) return;
+    setUploadedVideoName(null);
+    setVideoSrc('');
+    setAdminVideoUrlInput('');
+    if (onUpdateTrainingVideo) {
+      await onUpdateTrainingVideo(training.id, '');
+      setVideoSaveMessage('Video bu eğitimden kaldırıldı ve yayından alındı.');
       setTimeout(() => setVideoSaveMessage(null), 4000);
     }
   };
@@ -659,6 +678,17 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
                       >
                         Kaydet & Anlık Yayınla
                       </button>
+                      {(videoSrc || training.videoUrl) && (
+                        <button
+                          type="button"
+                          onClick={handleDeleteAdminVideo}
+                          className="px-3 py-2 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0"
+                          title="Bu eğitimin videosunu sil"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Videoyu Kaldır</span>
+                        </button>
+                      )}
                     </div>
                     {videoSaveMessage && (
                       <p className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
