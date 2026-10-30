@@ -50,48 +50,26 @@ function saveDeletedIds(ids: Set<string>): void {
   } catch {}
 }
 
-// Legacy/automatic preloaded sample videos that should be excluded so only admin videos appear
-export const AUTOMATIC_PRELOADED_VIDEOS = new Set([
-  '0kP0aW4l6bM',
-  'inWWhr5tnEA',
-  '60ItHLz5WEA',
-  'kJQP7kiw5Fk',
-  'L_LUpnjgPso',
-  '3JZ_D3ELwOQ',
-  'fJ9rUzIMcZQ',
-  'M576WGiDBdQ',
-  '21X5lGlDOfg',
-  'JGwWNGJdvx8',
-  'lTRiuFIWV54',
-  'uelHwf8o7_U'
-]);
-
-export function isAutomaticPreloadedVideo(url?: string | null): boolean {
+export function isLegacySampleVideo(url?: string | null): boolean {
   if (!url || typeof url !== 'string') return false;
   const clean = url.trim();
   if (!clean) return false;
-  if (clean.includes('commondatastorage.googleapis.com') || clean.includes('gtv-videos-bucket')) {
-    return true;
-  }
-  for (const id of AUTOMATIC_PRELOADED_VIDEOS) {
-    if (clean.includes(id)) return true;
-  }
-  return false;
+  return clean.includes('commondatastorage.googleapis.com') || clean.includes('gtv-videos-bucket');
 }
 
 /**
  * Ensures a training object is safe to write to a single Firestore document (< 850KB)
  */
 function sanitizeTrainingForFirestore(t: TrainingDocument): TrainingDocument {
-  const isAutoPreload = isAutomaticPreloadedVideo(t.videoUrl);
-  const cleanVideoUrl = isAutoPreload ? '' : (t.videoUrl ?? '');
-  const hasVideo = Boolean(cleanVideoUrl && cleanVideoUrl.trim() !== '');
+  const isLegacy = isLegacySampleVideo(t.videoUrl);
+  const cleanVideoUrl = isLegacy ? '' : (t.videoUrl?.trim() ?? '');
+  const hasVideo = cleanVideoUrl !== '';
   const copy: TrainingDocument = JSON.parse(JSON.stringify({
     ...t,
-    videoType: hasVideo ? (t.videoType || 'link') : 'none',
+    videoType: hasVideo ? (t.videoType && t.videoType !== 'none' ? t.videoType : 'link') : 'none',
     videoUrl: cleanVideoUrl,
-    videoTitle: hasVideo ? (t.videoTitle || '') : '',
-    videoDuration: hasVideo ? (t.videoDuration || '') : '',
+    videoTitle: hasVideo ? (t.videoTitle || t.title) : '',
+    videoDuration: hasVideo ? (t.videoDuration || '05:00') : '',
     pdfPath: t.pdfPath ?? ''
   }));
 
@@ -107,25 +85,36 @@ function sanitizeTrainingForFirestore(t: TrainingDocument): TrainingDocument {
 }
 
 /**
- * Strips heavy base64 blobs from catalog summary array so `appData/trainings_catalog` never exceeds 1MB
+ * Creates a lightweight catalog summary without nested arrays so `appData/trainings_catalog`
+ * never throws Firestore nested-array errors and syncs instantly across all branches.
  */
-function sanitizeCatalogForFirestore(list: TrainingDocument[]): TrainingDocument[] {
+function sanitizeCatalogForFirestore(list: TrainingDocument[]): any[] {
   return list.map(t => {
-    const item = sanitizeTrainingForFirestore(t);
-    const isAutoPreload = isAutomaticPreloadedVideo(item.videoUrl);
-    if (isAutoPreload) {
-      item.videoUrl = '';
-      item.videoType = 'none';
-      item.videoTitle = '';
-      item.videoDuration = '';
-    }
-    if (item.videoUrl && item.videoUrl.startsWith('data:') && item.videoUrl.length > 100000) {
-      item.videoUrl = '';
-    }
-    if (item.pdfPath && item.pdfPath.startsWith('data:') && item.pdfPath.length > 100000) {
-      item.pdfPath = '/assets/aistudio/Bilgi___lem_ve_Kasa_Y_netimi_Genel_E_itim_Talimat__085ba22b.pdf';
-    }
-    return item;
+    const isLegacy = isLegacySampleVideo(t.videoUrl);
+    const cleanVideoUrl = isLegacy ? '' : (t.videoUrl?.trim() ?? '');
+    const hasVideo = cleanVideoUrl !== '';
+
+    return {
+      id: t.id,
+      docNo: t.docNo,
+      title: t.title,
+      category: t.category,
+      priority: t.priority,
+      iconName: t.iconName,
+      badgeText: t.badgeText,
+      targetUnit: t.targetUnit,
+      authorOrManager: t.authorOrManager,
+      summary: t.summary,
+      pdfPath: t.pdfPath || '',
+      videoType: hasVideo ? (t.videoType && t.videoType !== 'none' ? t.videoType : 'link') : 'none',
+      videoUrl: cleanVideoUrl,
+      videoTitle: hasVideo ? (t.videoTitle || t.title) : '',
+      videoDuration: hasVideo ? (t.videoDuration || '05:00') : '',
+      isCustom: Boolean(t.isCustom),
+      isPresentation: Boolean(t.isPresentation),
+      createdAt: t.createdAt || new Date().toISOString(),
+      updatedAt: t.updatedAt || new Date().toISOString()
+    };
   });
 }
 
@@ -161,35 +150,46 @@ export function mergeTrainingsList(
   incoming.forEach((t: TrainingDocument) => {
     if (!t || !t.id || deletedIds.has(t.id)) return;
 
-    const isAutoPreload = isAutomaticPreloadedVideo(t.videoUrl);
-    const sanitizedVideoUrl = isAutoPreload ? undefined : (t.videoUrl && t.videoUrl.trim() !== '' ? t.videoUrl.trim() : undefined);
-    const sanitizedVideoType = sanitizedVideoUrl ? (t.videoType || 'link') : 'none';
-    const sanitizedVideoTitle = sanitizedVideoUrl ? t.videoTitle : undefined;
-    const sanitizedVideoDuration = sanitizedVideoUrl ? t.videoDuration : undefined;
+    const isLegacy = isLegacySampleVideo(t.videoUrl);
+    const cleanVideoUrl = isLegacy ? '' : (t.videoUrl?.trim() ?? '');
+    const hasIncomingVideo = cleanVideoUrl !== '';
 
     if (defaultMap.has(t.id)) {
       const existing = defaultMap.get(t.id)!;
-      // If incoming video was an auto-preload dummy, discard it and keep empty
-      const mergedVideoUrl = (sanitizedVideoUrl !== undefined) ? sanitizedVideoUrl : (isAutoPreload ? undefined : existing.videoUrl);
-      const mergedVideoType = mergedVideoUrl ? (t.videoType || 'link') : 'none';
+      // If incoming explicitly has a video or explicitly cleared it (empty string or none)
+      const mergedVideoUrl = hasIncomingVideo 
+        ? cleanVideoUrl 
+        : (t.videoUrl === '' || t.videoType === 'none' ? '' : (existing.videoUrl || ''));
+      const mergedVideoType = mergedVideoUrl !== ''
+        ? (t.videoType && t.videoType !== 'none' ? t.videoType : 'link')
+        : 'none';
+      const mergedVideoTitle = mergedVideoUrl !== ''
+        ? (t.videoTitle || existing.videoTitle || existing.title)
+        : undefined;
+      const mergedVideoDuration = mergedVideoUrl !== ''
+        ? (t.videoDuration || existing.videoDuration || '05:00')
+        : undefined;
 
       defaultMap.set(t.id, {
         ...existing,
         ...t,
         videoType: mergedVideoType,
         videoUrl: mergedVideoUrl,
-        videoTitle: mergedVideoUrl ? (sanitizedVideoTitle || existing.videoTitle) : undefined,
-        videoDuration: mergedVideoUrl ? (sanitizedVideoDuration || existing.videoDuration) : undefined,
+        videoTitle: mergedVideoTitle,
+        videoDuration: mergedVideoDuration,
         pdfPath: t.pdfPath !== undefined ? t.pdfPath : existing.pdfPath,
-        category: t.category || existing.category
+        category: t.category || existing.category,
+        chapters: (t.chapters && t.chapters.length > 0) ? t.chapters : existing.chapters,
+        slides: (t.slides && t.slides.length > 0) ? t.slides : existing.slides,
+        quiz: (t.quiz && t.quiz.length > 0) ? t.quiz : existing.quiz,
       });
     } else if (!initialTrainings.some(def => def.id === t.id)) {
       customMap.set(t.id, {
         ...t,
-        videoType: sanitizedVideoType,
-        videoUrl: sanitizedVideoUrl,
-        videoTitle: sanitizedVideoTitle,
-        videoDuration: sanitizedVideoDuration,
+        videoType: hasIncomingVideo ? (t.videoType && t.videoType !== 'none' ? t.videoType : 'link') : 'none',
+        videoUrl: hasIncomingVideo ? cleanVideoUrl : undefined,
+        videoTitle: hasIncomingVideo ? (t.videoTitle || t.title) : undefined,
+        videoDuration: hasIncomingVideo ? (t.videoDuration || '05:00') : undefined,
         pdfPath: t.pdfPath || undefined,
         isCustom: true
       });
@@ -723,14 +723,26 @@ export function subscribeToTrainingUpdates(
       map.set(t.id, t);
     });
 
-    // Individual collection documents always take latest precedence
+    // Individual collection documents always take latest precedence, while preserving catalog video if collection doc is older
     latestCollectionItems.forEach(t => {
       if (!t || !t.id || deletedSet.has(t.id)) return;
       const prev = map.get(t.id);
       if (prev) {
         const prevTime = prev.updatedAt || prev.createdAt || '';
         const currTime = t.updatedAt || t.createdAt || '';
-        map.set(t.id, currTime >= prevTime ? t : prev);
+        const hasPrevVid = Boolean(prev.videoUrl && prev.videoUrl.trim() !== '');
+        const hasCurrVid = Boolean(t.videoUrl && t.videoUrl.trim() !== '');
+        let target = currTime >= prevTime ? t : prev;
+        if (!hasCurrVid && hasPrevVid && t.videoType !== 'none') {
+          target = {
+            ...target,
+            videoUrl: prev.videoUrl,
+            videoType: prev.videoType || 'link',
+            videoTitle: prev.videoTitle,
+            videoDuration: prev.videoDuration
+          };
+        }
+        map.set(t.id, target);
       } else {
         map.set(t.id, t);
       }
@@ -970,7 +982,19 @@ export async function fetchRemoteTrainings(): Promise<{
           if (prev) {
             const prevTime = prev.updatedAt || prev.createdAt || '';
             const currTime = item.updatedAt || item.createdAt || '';
-            map.set(item.id, currTime >= prevTime ? item : prev);
+            const hasPrevVid = Boolean(prev.videoUrl && prev.videoUrl.trim() !== '');
+            const hasCurrVid = Boolean(item.videoUrl && item.videoUrl.trim() !== '');
+            let target = currTime >= prevTime ? item : prev;
+            if (!hasCurrVid && hasPrevVid && item.videoType !== 'none') {
+              target = {
+                ...target,
+                videoUrl: prev.videoUrl,
+                videoType: prev.videoType || 'link',
+                videoTitle: prev.videoTitle,
+                videoDuration: prev.videoDuration
+              };
+            }
+            map.set(item.id, target);
           } else {
             map.set(item.id, item);
           }

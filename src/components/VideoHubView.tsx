@@ -67,6 +67,16 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
     }
   }, [activeTraining, activeTrainingId]);
 
+  // When videos exist but active item has no video, automatically switch to first available video
+  useEffect(() => {
+    if (videoTrainings.length > 0) {
+      const activeHasVid = Boolean(activeTraining?.videoUrl && activeTraining.videoUrl.trim() !== '');
+      if (!activeHasVid) {
+        setActiveTrainingId(videoTrainings[0].id);
+      }
+    }
+  }, [videoTrainings.length, activeTraining]);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [customVideoSrc, setCustomVideoSrc] = useState<string | null>(null);
@@ -292,7 +302,7 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
 
             <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-700/70">
               <span className="text-[10px] text-slate-400">
-                Yerel dosyadan geçici önizleme:
+                Cihazdan dosya önizlemesi (Yalnızca bu sekmede):
               </span>
               <label className="cursor-pointer bg-slate-700 hover:bg-slate-600 text-slate-200 text-[11px] font-bold py-1 px-2.5 rounded-lg transition flex items-center gap-1">
                 <Upload className="w-3 h-3 text-sky-400" />
@@ -306,10 +316,19 @@ export const VideoHubView: React.FC<VideoHubViewProps> = ({
               </label>
             </div>
             {customVideoName && (
-              <span className="text-[10px] text-amber-300 truncate block">
-                ⚠ Cihaz önizlemesi: {customVideoName}
-              </span>
+              <div className="p-2 rounded-lg bg-amber-950/70 border border-amber-600/40 text-amber-300 text-[11px] space-y-1">
+                <p className="font-bold flex items-center gap-1">
+                  <span>⚠ Cihaz dosyası seçildi:</span>
+                  <span className="underline">{customVideoName}</span>
+                </p>
+                <p className="text-[10px] text-amber-200/90 leading-tight">
+                  Tüm 35 mağaza şubesinin izleyebilmesi ve sayfa yenilendiğinde kalıcı olması için bu videoyu YouTube'a (veya Google Drive'a) yükleyip linkini yukarıdaki kutudan yayınlayınız.
+                </p>
+              </div>
             )}
+            <p className="text-[10px] text-slate-400 leading-tight">
+              💡 <strong>Tavsiye:</strong> Eğitim videolarını YouTube'a "Liste Dışı" (sadece linki olanlar izler) yükleyip linkini yukarıya yapıştırmanız yeterlidir. Tüm mağazalar ve personeller anında izleyebilir ve sayfa yenilendiğinde silinmez.
+            </p>
           </div>
         )}
       </div>
