@@ -163,8 +163,10 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
               />
             </div>
           </div>
-          <p className="text-xs sm:text-sm font-bold tracking-wide opacity-80">
-            ESME Eğitim, İç Yönergeler Portalı
+          <p className="text-sm sm:text-[15px] font-black tracking-wide text-slate-900 dark:text-slate-100 px-4 py-1.5 rounded-xl bg-gradient-to-r from-red-50/90 via-white to-red-50/90 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border border-[#6d071a]/20 dark:border-red-900/50 shadow-sm inline-flex items-center justify-center gap-2">
+            <span className="w-1.5 h-4 rounded-full bg-[#6d071a] dark:bg-red-500 inline-block"></span>
+            <span className="text-[#6d071a] dark:text-red-400 font-black">ESME</span>
+            <span className="text-slate-800 dark:text-slate-200 font-extrabold">Eğitim, İç Yönergeler Portalı</span>
           </p>
         </div>
 
