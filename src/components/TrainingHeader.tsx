@@ -162,17 +162,15 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
               <GraduationCap className="w-6 h-6 text-white" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="font-black text-xl tracking-tight text-white font-sans">
+              <div className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
+                <span className="font-black text-base sm:text-xl tracking-tight text-white font-sans">
                   ESME <span className="text-red-500">Eğitim</span>
                 </span>
-                <span className="text-[10px] bg-red-600/30 text-red-300 font-bold px-1.5 py-0.5 rounded border border-red-500/30 uppercase">
-                  Esme AVM
+                <span className="text-slate-400 font-bold">•</span>
+                <span className="text-xs sm:text-sm font-bold text-slate-300">
+                  İç Yönergeler Portalı
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 leading-none">
-                İç Yönergeler Portalı
-              </p>
             </div>
           </div>
 

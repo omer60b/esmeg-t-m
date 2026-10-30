@@ -219,17 +219,23 @@ export default function App() {
     setCurrentBranchId(branchId);
     setCurrentPersonnel(personnel);
     setIsStoreAuthenticated(true);
+    setTrainingActiveTab('catalog'); // Her mağaza girişinde ilk açılan sayfa karşılama ve eğitimler alanı olsun
+    setSelectedCategory('all');
+    setSearchQuery('');
     try {
       localStorage.setItem('esme_store_authenticated', 'true');
       localStorage.setItem('esme_active_branch_id', String(branchId));
       localStorage.setItem('esme_active_personnel_name', personnel);
+      localStorage.setItem('esme_active_tab', 'catalog');
     } catch {}
   };
 
   const handleStoreLogout = () => {
     setIsStoreAuthenticated(false);
+    setTrainingActiveTab('catalog');
     try {
       localStorage.removeItem('esme_store_authenticated');
+      localStorage.setItem('esme_active_tab', 'catalog');
     } catch {}
   };
 
