@@ -774,7 +774,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                 Sertifika Albümünde Henüz Kayıt Bulunmuyor
               </h3>
               <p className="text-xs text-slate-500 max-w-md mx-auto">
-                Eğitim modüllerini veya Tebellüğ & Takip sayfasındaki 5 soruluk yeterlilik sınavını başarıyla tamamladığınızda sertifikalarınız bu albümde sergilenir.
+                Eğitim modüllerindeki 5 soruluk yeterlilik sınavlarını başarıyla tamamladığınızda sertifikalarınız bu albümde sergilenir.
               </p>
             </div>
           ) : (
@@ -905,7 +905,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
               <div className="flex items-center gap-2">
                 <Edit3 className="w-4 h-4 text-amber-400" />
                 <h3 className="font-extrabold text-sm">
-                  Sertifika & Tebellüğ Kaydını Düzenle (Yönetici)
+                  Sertifika ve Başarı Kaydını Düzenle (Yönetici)
                 </h3>
               </div>
               <button
@@ -1087,7 +1087,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                 <Sparkles className="w-5 h-5 text-amber-400" />
                 <div>
                   <h3 className="font-extrabold text-sm sm:text-base">
-                    Esme AVM Resmi Başarı ve Tebellüğ Sertifikası Önizlemesi
+                    ESME Başarı ve Yeterlilik Sertifikası Önizlemesi
                   </h3>
                   <p className="text-[11px] text-slate-400">
                     {previewCertificate.completion.personnelName} • {previewCertificate.completion.branchName} • Kod: {previewCertificate.completion.certificateId}

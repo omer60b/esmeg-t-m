@@ -202,7 +202,7 @@ export const PendingTrainingsReminder: React.FC<PendingTrainingsReminderProps> =
           className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-extrabold flex items-center gap-1.5 shadow cursor-pointer"
         >
           <CheckCircle2 className="w-3.5 h-3.5" />
-          <span>Okudum, Tebellüğ Ettim</span>
+          <span>Okudum, İnceledim</span>
         </button>
       </div>
     </div>

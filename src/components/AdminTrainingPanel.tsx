@@ -577,23 +577,23 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     });
   };
 
-  // Clear all completions (Tebellüğ Kayıtlarını Temizle)
+  // Clear all completions (Sınav ve Başarı Kayıtlarını Temizle)
   const handleClearAllCompletions = () => {
     if (completions.length === 0) {
-      showNotice('Temizlenecek tebellüğ kaydı bulunmamaktadır.', 'error');
+      showNotice('Temizlenecek başarı kaydı bulunmamaktadır.', 'error');
       return;
     }
 
     setConfirmDialog({
       isOpen: true,
-      title: 'Tüm Tebellüğ Kayıtlarını Temizle',
-      message: `Sistemde kayıtlı ${completions.length} adet şube tebellüğ imzası ve sınav sonucu hem yerel hafızadan hem de merkezi bulut veritabanından kalıcı olarak temizlenecektir. Onaylıyor musunuz?`,
+      title: 'Tüm Sınav ve Başarı Kayıtlarını Temizle',
+      message: `Sistemde kayıtlı ${completions.length} adet şube sınav sonucu ve tamamlama onayı hem yerel hafızadan hem de merkezi bulut veritabanından kalıcı olarak temizlenecektir. Onaylıyor musunuz?`,
       confirmLabel: 'Evet, Tüm Kayıtları Temizle',
       onConfirm: async () => {
         if (onClearCompletions) {
           await onClearCompletions();
         }
-        showNotice('Tüm şube tebellüğ kayıtları ve imzaları başarıyla temizlendi.');
+        showNotice('Tüm şube sınav ve tamamlama kayıtları başarıyla temizlendi.');
       }
     });
   };
@@ -602,14 +602,14 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
   const handleDeleteSingleCompletion = (comp: TrainingCompletion) => {
     setConfirmDialog({
       isOpen: true,
-      title: 'Tebellüğ Kaydını Sil',
-      message: `${comp.branchName} şubesinden "${comp.personnelName}" personeline ait "${comp.trainingTitle}" tebellüğ kaydını silmek istediğinize emin misiniz?`,
+      title: 'Başarı Kaydını Sil',
+      message: `${comp.branchName} şubesinden "${comp.personnelName}" personeline ait "${comp.trainingTitle}" tamamlama kaydını silmek istediğinize emin misiniz?`,
       confirmLabel: 'Kaydı Sil',
       onConfirm: async () => {
         if (onDeleteCompletion) {
           await onDeleteCompletion(comp.id);
         }
-        showNotice(`"${comp.personnelName}" personeline ait tebellüğ kaydı silindi.`);
+        showNotice(`"${comp.personnelName}" personeline ait tamamlama kaydı silindi.`);
       }
     });
   };
@@ -758,11 +758,11 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
   // Export completion report to Excel
   const handleExportExcel = () => {
     if (completions.length === 0) {
-      showNotice('İndirilecek tebellüğ kaydı bulunmamaktadır.', 'error');
+      showNotice('İndirilecek başarı kaydı bulunmamaktadır.', 'error');
       return;
     }
     const rows = completions.map(c => ({
-      'Tebellüğ No': c.certificateId,
+      'Sertifika No': c.certificateId,
       'Eğitim Adı': c.trainingTitle,
       'Kategori': c.category === 'bilgi-islem' ? 'Bilgi İşlem' : 'Depocu',
       'Şube Kodu': officialEsmeBranches.find(b => b.id === c.branchId)?.code || '',
@@ -771,15 +771,15 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
       'Görevi': c.personnelRole,
       'Sınav Skoru': `${c.quizScore ?? 0} / ${c.quizTotal ?? 0}`,
       'Sınav Durumu': c.quizPassed ? 'Başarılı' : 'Geliştirilmeli',
-      'Taahhütname Onayı': c.signedAgreement ? 'Onaylandı' : 'Bekliyor',
+      'Taahhüt Onayı': c.signedAgreement ? 'Onaylandı' : 'Bekliyor',
       'Tarih & Saat': new Date(c.completedAt).toLocaleString('tr-TR')
     }));
 
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Tebellüğ Raporu");
-    XLSX.writeFile(wb, `esmeegitim_Tebellug_Raporu_${new Date().toISOString().slice(0, 10)}.xlsx`);
-    showNotice('Tebellüğ raporu Excel (.xlsx) olarak indirildi.');
+    XLSX.utils.book_append_sheet(wb, ws, "Basari_Raporu");
+    XLSX.writeFile(wb, `ESME_Egitim_Basari_Raporu_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    showNotice('Başarı raporu Excel (.xlsx) olarak indirildi.');
   };
 
   return (
@@ -822,10 +822,10 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
           </div>
 
           <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-            Eğitim İçeriği, Tebellüğ & Yetkili Yönetici Merkezi
+            Eğitim İçeriği, Video & Yetkili Yönetici Merkezi
           </h2>
           <p className="text-xs sm:text-sm text-slate-300 max-w-2xl mt-1">
-            Yeni eğitim ve videolar ekleyin, mevcut modülleri düzenleyin, yeni yöneticiler tanımlayın ve 35 Esme şubesinin tebellüğ durumlarını canlı takip edin.
+            Yeni eğitim ve videolar ekleyin, mevcut modülleri düzenleyin, yeni yöneticiler tanımlayın ve 35 Esme şubesinin eğitim tamamlama durumlarını canlı takip edin.
           </p>
         </div>
 
@@ -863,7 +863,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
           }`}
         >
           <Award className="w-4 h-4 text-emerald-500" />
-          Şube Tebellüğ Raporları ({completions.length} Onay)
+          Şube Başarı Raporları ({completions.length} Onay)
         </button>
 
         <button
@@ -1024,7 +1024,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
             <div>
               <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                Resmi Tebellüğ İmzaları & Taahhütname Kayıtları
+                Şube Eğitim Tamamlama & Sertifika Kayıtları
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 Toplam {completions.length} onay kaydı bulunmaktadır.
@@ -1061,7 +1061,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
               <table className="w-full text-xs text-left">
                 <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-700">
                   <tr>
-                    <th className="p-3.5">Tebellüğ No</th>
+                    <th className="p-3.5">Sertifika No</th>
                     <th className="p-3.5">Şube</th>
                     <th className="p-3.5">Personel</th>
                     <th className="p-3.5">Eğitim Başlığı</th>
@@ -1076,7 +1076,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                   {completions.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="p-8 text-center text-slate-400">
-                        Henüz kayıtlı bir tebellüğ onay kaydı bulunmamaktadır.
+                        Henüz kayıtlı bir eğitim tamamlama onay kaydı bulunmamaktadır.
                       </td>
                     </tr>
                   ) : (
@@ -1117,7 +1117,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                             type="button"
                             onClick={() => handleDeleteSingleCompletion(c)}
                             className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900 text-rose-600 dark:text-rose-400 transition cursor-pointer"
-                            title="Bu tebellüğ kaydını sil"
+                            title="Bu tamamlama kaydını sil"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1332,10 +1332,10 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
               <div className="p-4 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50/40 dark:bg-rose-950/20 flex flex-col justify-between gap-3">
                 <div>
                   <h5 className="font-bold text-xs text-rose-900 dark:text-rose-300">
-                    Tüm Şube Tebellüğ İmzalarını Sıfırla
+                    Tüm Şube Sınav ve Başarı Kayıtlarını Sıfırla
                   </h5>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                    35 şubenin sisteme kaydettiği tüm tebellüğ taahhütname onaylarını ve sertifikalarını temizler.
+                    35 şubenin sisteme kaydettiği tüm eğitim tamamlama onaylarını ve sertifikalarını temizler.
                   </p>
                 </div>
                 <button
@@ -1344,7 +1344,7 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Tebellüğ Kayıtlarını Sıfırla ({completions.length})</span>
+                  <span>Sınav & Başarı Kayıtlarını Sıfırla ({completions.length})</span>
                 </button>
               </div>
 

@@ -130,8 +130,8 @@ export function renderCertificateCanvas(completion: TrainingCompletion): HTMLCan
   ctx.fillStyle = '#111827';
   const mainCertTitle =
     completion.category === 'depocu'
-      ? 'RESMİ DEPOCU EĞİTİM BAŞARI VE TEBELLÜĞ SERTİFİKASI'
-      : 'RESMİ EĞİTİM BAŞARI VE TEBELLÜĞ SERTİFİKASI';
+      ? 'DEPOCU EĞİTİM VE GÖREV YETERLİLİK SERTİFİKASI'
+      : 'EĞİTİM BAŞARI VE YETERLİLİK SERTİFİKASI';
   ctx.fillText(mainCertTitle, centerX, 416);
 
   // 6. Statement Paragraph (Full Turkish UTF-8)
@@ -141,7 +141,7 @@ export function renderCertificateCanvas(completion: TrainingCompletion): HTMLCan
 
   ctx.font = `500 26px ${fontStack}`;
   ctx.fillStyle = '#1f2937';
-  const statementText = `İşbu resmi belge ile aşağıda kimliği ve görev yeri belirtilen personelimizin; Esme AVM bünyesinde yayımlanan resmi talimatname ve standart operasyon yönergelerini eksiksiz okuduğu, Resmi Yeterlilik Sınavında %${pct} (${score}/${total}) başarı gösterdiği ve kurallara harfiyen uyacağını dijital olarak tebellüğ ettiği tescil edilmiştir.`;
+  const statementText = `İşbu belge ile aşağıda kimliği ve görev yeri belirtilen personelimizin; ESME bünyesinde yayımlanan eğitim ve standart operasyon yönergelerini eksiksiz incelediği, Sınavda %${pct} (${score}/${total}) başarı gösterdiği ve yönerge kurallarına eksiksiz uyacağını taahhüt ettiği tescil edilmiştir.`;
   wrapCanvasText(ctx, statementText, centerX, 490, 1860, 40);
 
   // 7. Details Table Box
@@ -151,7 +151,7 @@ export function renderCertificateCanvas(completion: TrainingCompletion): HTMLCan
   const rowH = 74;
 
   const rows: [string, string][] = [
-    ['Tebellüğ Eden Personel', completion.personnelName || 'Şube Personeli'],
+    ['Eğitimi Tamamlayan Personel', completion.personnelName || 'Şube Personeli'],
     ['Mağaza / Şube Bilgisi', `${completion.branchName} (Şube Kodu: #${completion.branchId})`],
     ['Eğitim Modülü / Yönerge', completion.trainingTitle],
     [
@@ -161,8 +161,8 @@ export function renderCertificateCanvas(completion: TrainingCompletion): HTMLCan
         : 'Bilgi İşlem ve Kasa Yönetimi Alanı'
     ],
     ['Sınav Başarı Derecesi', `${score} / ${total} Doğru (%${pct} Başarı — GEÇER NOT)`],
-    ['Tebellüğ Tarih ve Saati', new Date(completion.completedAt).toLocaleString('tr-TR')],
-    ['Resmi Sertifika Doğrulama Kodu', completion.certificateId]
+    ['Tamamlama Tarih ve Saati', new Date(completion.completedAt).toLocaleString('tr-TR')],
+    ['Sertifika Doğrulama Kodu', completion.certificateId]
   ];
 
   // Table Header
@@ -175,7 +175,7 @@ export function renderCertificateCanvas(completion: TrainingCompletion): HTMLCan
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'left';
   ctx.fillText('PARAMETRE', tableX + 36, tableY + 46);
-  ctx.fillText('RESMİ TEBELLÜĞ VE SERTİFİKA DETAYI', tableX + 620, tableY + 46);
+  ctx.fillText('EĞİTİM VE BAŞARI SERTİFİKASI DETAYI', tableX + 620, tableY + 46);
 
   // Table Rows
   rows.forEach(([label, val], idx) => {
@@ -218,10 +218,10 @@ export function renderCertificateCanvas(completion: TrainingCompletion): HTMLCan
   const leftSigX = 520;
   ctx.font = `800 26px ${fontStack}`;
   ctx.fillStyle = '#0f172a';
-  ctx.fillText('TEBELLÜĞ EDEN PERSONEL', leftSigX, sigY);
+  ctx.fillText('PERSONEL BEYAN VE ONAYI', leftSigX, sigY);
   ctx.font = `600 21px ${fontStack}`;
   ctx.fillStyle = '#64748b';
-  ctx.fillText('Dijital Onay ve Taahhüt İmzası', leftSigX, sigY + 34);
+  ctx.fillText('Dijital Sınav ve Tamamlama Onayı', leftSigX, sigY + 34);
 
   ctx.strokeStyle = '#cbd5e1';
   ctx.lineWidth = 2;
@@ -235,7 +235,7 @@ export function renderCertificateCanvas(completion: TrainingCompletion): HTMLCan
   ctx.fillText(completion.personnelName || 'Şube Personeli', leftSigX, sigY + 100);
   ctx.font = `700 20px ${fontStack}`;
   ctx.fillStyle = '#059669';
-  ctx.fillText('✓ Dijital Olarak İmzalandı', leftSigX, sigY + 136);
+  ctx.fillText('✓ Dijital Olarak Tamamlandı', leftSigX, sigY + 136);
 
   // Center Gold Seal
   ctx.save();
@@ -290,7 +290,7 @@ export function renderCertificateCanvas(completion: TrainingCompletion): HTMLCan
   ctx.font = `600 19px ${fontStack}`;
   ctx.fillStyle = '#94a3b8';
   ctx.fillText(
-    `Esme AVM Kurumsal Eğitim ve Tebellüğ Portalı • Belge No: ${completion.certificateId} • Bu belge 5070 sayılı kanun kapsamında dijital kayıt niteliğindedir.`,
+    `ESME Eğitim, İç Yönergeler Portalı • Belge No: ${completion.certificateId} • Kurumsal dijital başarı kayıt belgesidir.`,
     centerX,
     H - 125
   );

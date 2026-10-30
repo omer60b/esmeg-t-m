@@ -27,8 +27,8 @@ import { updateBranchPassword } from '../services/branchStorage';
 export type AppThemeMode = 'sepia' | 'light' | 'dark';
 
 interface TrainingHeaderProps {
-  activeTab: 'catalog' | 'ebook' | 'video' | 'tebellug' | 'leaderboard' | 'admin';
-  setActiveTab: (tab: 'catalog' | 'ebook' | 'video' | 'tebellug' | 'leaderboard' | 'admin') => void;
+  activeTab: 'catalog' | 'ebook' | 'video' | 'leaderboard' | 'admin';
+  setActiveTab: (tab: 'catalog' | 'ebook' | 'video' | 'leaderboard' | 'admin') => void;
   selectedCategory: 'all' | TrainingCategory;
   setSelectedCategory: (cat: 'all' | TrainingCategory) => void;
   searchQuery: string;
@@ -164,14 +164,14 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-black text-xl tracking-tight text-white font-sans">
-                  esme<span className="text-red-500">egıtım</span>
+                  ESME <span className="text-red-500">Eğitim</span>
                 </span>
                 <span className="text-[10px] bg-red-600/30 text-red-300 font-bold px-1.5 py-0.5 rounded border border-red-500/30 uppercase">
                   Esme AVM
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 leading-none">
-                Esme AVM Bilgi İşlem & Depo Eğitim Portalı
+                İç Yönergeler Portalı
               </p>
             </div>
           </div>
@@ -234,18 +234,6 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
             >
               <Video className="w-4 h-4 text-sky-400" />
               <span className="hidden sm:inline">Videolar</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('tebellug')}
-              className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
-                activeTab === 'tebellug'
-                  ? 'bg-red-600 text-white shadow-md shadow-red-900/30 font-semibold'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <FileCheck2 className="w-4 h-4 text-emerald-400" />
-              <span className="hidden sm:inline">Tebellüğ & Takip</span>
             </button>
 
             <button
@@ -358,7 +346,7 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
                 <div className="absolute right-0 mt-2 w-72 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-3 z-50 animate-in fade-in zoom-in-95 duration-100">
                   <div className="pb-2 border-b border-slate-800 mb-2">
                     <p className="text-xs font-semibold text-slate-300">Aktif Şube ve Personel Bilgisi</p>
-                    <p className="text-[11px] text-slate-400">Tebellüğ ve sertifikalarda bu bilgiler yer alır</p>
+                    <p className="text-[11px] text-slate-400">Sınav ve sertifikalarda bu bilgiler yer alır</p>
                   </div>
 
                   <div className="space-y-2.5 mb-3">
@@ -689,7 +677,7 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
                   Şube Değiştirme Doğrulaması
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Her mağazanın girişi ve tebellüğü kendine özeldir
+                  Her mağazanın girişi kendine özeldir
                 </p>
               </div>
             </div>

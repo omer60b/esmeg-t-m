@@ -6,7 +6,6 @@ import {
   LogIn, 
   AlertCircle, 
   ShieldCheck, 
-  GraduationCap, 
   Eye, 
   EyeOff,
   Key,
@@ -152,21 +151,20 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
     }`}>
       <div className="w-full max-w-md">
         
-        {/* Brand Header */}
-        <div className="text-center mb-6">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-red-600 to-rose-700 flex items-center justify-center mx-auto mb-3 shadow-xl shadow-red-900/30 border border-red-500/30">
-            <GraduationCap className="w-9 h-9 text-white" />
+        {/* Brand Header with adapted official logo image */}
+        <div className="text-center mb-6 flex flex-col items-center">
+          <div className="relative mb-3.5 inline-block group">
+            <div className="overflow-hidden rounded-2xl shadow-xl shadow-[#6d071a]/25 border border-[#851025]/40 bg-[#6d071a] p-1.5 transition-transform duration-200 hover:scale-[1.02]">
+              <img
+                src="/assets/aistudio/images_5bc49cff.jpg"
+                alt="ESME - Eviniz İçin Her Şey"
+                className="w-auto h-16 sm:h-20 max-w-[280px] sm:max-w-[340px] object-contain rounded-xl block"
+                loading="eager"
+              />
+            </div>
           </div>
-          <div className="flex items-center justify-center gap-2 mb-1">
-            <h1 className="text-2xl font-black tracking-tight font-sans">
-              esme<span className="text-red-600">egıtım</span>
-            </h1>
-            <span className="text-[11px] bg-red-600 text-white font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-              Esme AVM
-            </span>
-          </div>
-          <p className="text-xs font-semibold opacity-75">
-            Kurumsal Eğitim, İç Yönergeler ve Resmi Tebellüğ Portalı
+          <p className="text-xs sm:text-sm font-bold tracking-wide opacity-80">
+            ESME Eğitim, İç Yönergeler Portalı
           </p>
         </div>
 
@@ -264,7 +262,7 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
                 }`}
               />
               <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
-                Sertifika ve dijital tebellüğ evraklarında bu isim yer alacaktır.
+                Sertifika ve eğitim başarı belgelerinde bu isim yer alacaktır.
               </span>
             </div>
 

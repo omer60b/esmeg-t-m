@@ -114,8 +114,8 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
       return `🤖 Esme AVM: Talebiniz "${selectedManager}" birimine canlı olarak iletildi. Depo kabul, şase numarası eşleştirme ve barkod etiketleme işlemlerinde fiziki ürün ile sistem kaydının birebir uyuşması zorunludur. Yöneticimiz mesajınızı inceleyip buradan yanıtlayacaktır.`;
     }
 
-    if (q.includes('sınav') || q.includes('sertifika') || q.includes('tebellüğ') || q.includes('imza')) {
-      return `🤖 Esme AVM: Mesajınız "${selectedManager}" ekranına düştü. Eğitim modülünün içindeki "Sınav & Tebellüğ" sekmesinden 5 soruluk testi tamamlayıp dijital onay kutucuğunu işaretleyerek sertifikanızı anında oluşturabilirsiniz.`;
+    if (q.includes('sınav') || q.includes('sertifika') || q.includes('yeterlilik') || q.includes('imza')) {
+      return `🤖 Esme AVM: Mesajınız "${selectedManager}" ekranına düştü. Eğitim modülünün içindeki "Sınav" bölümünden 5 soruluk testi tamamlayıp dijital onay kutucuğunu işaretleyerek sertifikanızı anında oluşturabilirsiniz.`;
     }
 
     if (matchedTraining) {
@@ -208,7 +208,7 @@ export const FloatingAIRobotBot: React.FC<FloatingAIRobotBotProps> = ({
     'Yönetime acil operasyonel durum bildirmek istiyorum',
     'Kasa kapanış / EFT dekont onayı hakkında destek',
     'Depo şase no ve barkod eşleştirme sorusu',
-    'Tebellüğ sınavı ve sertifika onayı hakkında'
+    'Eğitim yeterlilik sınavı ve sertifika onayı hakkında'
   ];
 
   return (

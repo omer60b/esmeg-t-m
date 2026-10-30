@@ -228,7 +228,7 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
 
   const handleFinalSignAgreement = () => {
     if (!personnelInputName.trim()) {
-      setQuizValidationMsg('Lütfen tebellüğ eden personel adını ve soyadını yazınız.');
+      setQuizValidationMsg('Lütfen personel adını ve soyadını yazınız.');
       return;
     }
 
@@ -243,13 +243,13 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
     }
 
     if (!agreedToTerms) {
-      setQuizValidationMsg('Lütfen tebellüğ taahhütnamesini okuduğunuzu onaylayan kutucuğu işaretleyiniz.');
+      setQuizValidationMsg('Lütfen beyan ve onay kutucuğunu işaretleyiniz.');
       return;
     }
 
     setQuizValidationMsg(null);
 
-    const certId = `ESME-TBL-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const certId = `ESME-SRT-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
     setGeneratedCertificateId(certId);
 
     const completionRecord: TrainingCompletion = {
@@ -330,7 +330,7 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
 
               {isAlreadyCompleted && (
                 <span className="text-[11px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 py-0.5 rounded flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Tebellüğ Edildi
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Tamamlandı
                 </span>
               )}
             </div>
@@ -424,7 +424,7 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
             </button>
           )}
 
-          {/* Tab 5: Sınav & Tebellüğ İmza */}
+          {/* Tab 5: Sınav & Sertifika */}
           <button
             onClick={() => setActiveTab('quiz')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition whitespace-nowrap cursor-pointer ${
@@ -583,7 +583,7 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
                     onClick={() => setActiveTab('quiz')}
                     className="px-4 py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/30 flex items-center gap-1.5 cursor-pointer"
                   >
-                    <Award className="w-4 h-4" /> Sınava & Tebellüğe Geç
+                    <Award className="w-4 h-4" /> Sınava Geç
                   </button>
                 )}
               </div>
@@ -970,7 +970,7 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
                     <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                       <span className="font-bold text-slate-800 block">Şube Personeli</span>
                       <span className="text-[10px] text-slate-500 block">{currentPersonnel}</span>
-                      <span className="text-[10px] text-blue-600 font-bold mt-1 block">Tebellüğ Kayıt No: {training.docNo}</span>
+                      <span className="text-[10px] text-blue-600 font-bold mt-1 block">Yönerge No: {training.docNo}</span>
                     </div>
                   </div>
 
@@ -1076,7 +1076,7 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
                     </span>
                   </div>
                   <h3 className="text-lg sm:text-xl font-black">
-                    5 Soruluk Başarı Testi ve Resmi Tebellüğ İmza Alanı
+                    5 Soruluk Başarı Testi ve Beyan Onay Alanı
                   </h3>
                   <p className="text-xs text-rose-100 mt-1 max-w-xl">
                     Başarı sertifikası kazanabilmek için rastgele oluşturulan 5 soruluk testten <strong>en az 4 doğru (%80 başarı şartı)</strong> almanız gerekmektedir.
@@ -1199,11 +1199,11 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
                 </div>
               ) : (
                 <div className="p-8 text-center bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
-                  <p className="text-xs text-slate-400">Bu eğitim için doğrudan tebellüğ onayı geçerlidir.</p>
+                  <p className="text-xs text-slate-400">Bu eğitim için doğrudan tamamlama onayı geçerlidir.</p>
                 </div>
               )}
 
-              {/* Digital Tebellüğ & Taahhüt Form */}
+              {/* Digital Onay & Taahhüt Form */}
               <div className="bg-gradient-to-br from-slate-900 to-slate-950 text-white rounded-2xl p-6 border border-slate-800 shadow-xl space-y-4">
                 {quizValidationMsg && (
                   <div className="p-3.5 rounded-xl bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs font-bold flex items-center gap-2">
@@ -1214,7 +1214,7 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
                 <div className="flex items-center gap-2 pb-3 border-b border-slate-800 text-amber-400">
                   <ShieldAlert className="w-5 h-5 text-amber-400" />
                   <h4 className="text-sm font-extrabold uppercase tracking-wider text-white">
-                    Personel Tebellüğ ve Taahhütnamesi
+                    Personel Eğitimi Tamamlama ve Taahhüt Beyanı
                   </h4>
                 </div>
 
@@ -1233,7 +1233,7 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
 
                   <div>
                     <label className="text-xs text-slate-400 block mb-1">
-                      Tebellüğ Eden Personel (Ad Soyad):
+                      Eğitimi Tamamlayan Personel (Ad Soyad):
                     </label>
                     <input
                       type="text"
@@ -1254,7 +1254,7 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
                       className="w-4 h-4 mt-0.5 text-red-600 rounded border-slate-700 focus:ring-red-500 cursor-pointer"
                     />
                     <span className="text-xs text-slate-200 leading-relaxed">
-                      <strong>RESMİ TAAHHÜT:</strong> Yukarıda ve ilgili yönergede ({training.docNo}) açıklanan operasyonel kuralları, hukuki ve cezai yaptırımları, süreç adımlarını eksiksiz okuduğumu; sınava katılarak başarıyla tamamladığımı ve tüm süreçlerde kurallara harfiyen uyacağımı şahsen beyan, kabul ve taahhüt ederim.
+                      <strong>KURUMSAL TAAHHÜT:</strong> Yukarıda ve ilgili yönergede ({training.docNo}) açıklanan operasyonel kuralları, süreç adımlarını eksiksiz okuduğumu; sınava katılarak başarıyla tamamladığımı ve tüm süreçlerde kurallara harfiyen uyacağımı şahsen beyan, kabul ve taahhüt ederim.
                     </span>
                   </label>
                 </div>
@@ -1269,7 +1269,7 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
                     className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-red-900/40 transition cursor-pointer"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Okudum, Onaylıyorum ve Tebellüğ Ediyorum</span>
+                    <span>Okudum, Onaylıyorum ve Tamamladım</span>
                   </button>
                 </div>
 
@@ -1303,10 +1303,10 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
                   Esme AVM Akademisi
                 </span>
                 <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mt-1">
-                  Resmi Başarı ve Tebellüğ Sertifikası
+                  Başarı ve Yeterlilik Sertifikası
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  5 soruluk sınavı %80 üzeri başarıyla tamamlayarak ({correctCount}/{totalQuestions}) yönergeyi tebellüğ ettiniz.
+                  5 soruluk sınavı %80 üzeri başarıyla tamamlayarak ({correctCount}/{totalQuestions}) sertifika almaya hak kazandınız.
                 </p>
               </div>
 

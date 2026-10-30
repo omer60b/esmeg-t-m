@@ -44,7 +44,6 @@ import { TrainingDetailModal } from './components/TrainingDetailModal';
 import { EBookReader } from './components/EBookReader';
 import { VideoHubView } from './components/VideoHubView';
 import { AdminTrainingPanel } from './components/AdminTrainingPanel';
-import { TebellugTrackingView } from './components/TebellugTrackingView';
 import { LeaderboardView } from './components/LeaderboardView';
 import { AdminAuthModal } from './components/AdminAuthModal';
 import { FloatingAIRobotBot } from './components/FloatingAIRobotBot';
@@ -54,11 +53,12 @@ export default function App() {
   const [completions, setCompletions] = useState<TrainingCompletion[]>(() => getStoredCompletions());
   const [announcements, setAnnouncements] = useState<TrainingAnnouncement[]>(() => getStoredAnnouncements());
   const [branches, setBranches] = useState<Branch[]>(() => getStoredBranches());
-  const [trainingActiveTab, setTrainingActiveTab] = useState<'catalog' | 'ebook' | 'video' | 'tebellug' | 'leaderboard' | 'admin'>(() => {
+  const [trainingActiveTab, setTrainingActiveTab] = useState<'catalog' | 'ebook' | 'video' | 'leaderboard' | 'admin'>(() => {
     try {
       const savedAdmin = localStorage.getItem('esme_is_admin_mode') === 'true';
       const savedTab = localStorage.getItem('esme_active_tab') as any;
-      if (savedTab) return savedTab;
+      const validTabs = ['catalog', 'ebook', 'video', 'leaderboard', 'admin'];
+      if (savedTab && validTabs.includes(savedTab)) return savedTab;
       if (savedAdmin) return 'admin';
     } catch {}
     return 'catalog';
@@ -551,19 +551,7 @@ export default function App() {
             />
           )}
 
-          {/* VIEW 4: TEBELLÜĞ & TAAHHÜT TRACKING */}
-          {trainingActiveTab === 'tebellug' && (
-            <TebellugTrackingView
-              trainings={trainings}
-              completions={completions}
-              currentBranchId={currentBranchId}
-              currentPersonnel={currentPersonnel}
-              onOpenTrainingDetail={handleOpenTrainingDetail}
-              onRecordCompletion={handleRecordCompletion}
-            />
-          )}
-
-          {/* VIEW 5: LEADERBOARD & CERTIFICATE ALBUM */}
+          {/* VIEW 4: LEADERBOARD & CERTIFICATE ALBUM */}
           {trainingActiveTab === 'leaderboard' && (
             <LeaderboardView
               trainings={trainings}
@@ -576,7 +564,7 @@ export default function App() {
             />
           )}
 
-          {/* VIEW 6: ADMIN TRAINING MANAGEMENT */}
+          {/* VIEW 5: ADMIN TRAINING MANAGEMENT */}
           {trainingActiveTab === 'admin' && (
             isAdmin ? (
               <AdminTrainingPanel
@@ -607,7 +595,7 @@ export default function App() {
                   Yönetici İzni Gereklidir
                 </h3>
                 <p className="text-xs text-slate-600 dark:text-slate-400 mb-6">
-                  Yeni eğitim veya video eklemek, mevcut modülleri güncellemek ve resmi tebellüğ raporlarını indirmek için yönetici girişi yapınız.
+                  Yeni eğitim veya video eklemek, mevcut modülleri güncellemek ve şube başarı raporlarını indirmek için yönetici girişi yapınız.
                 </p>
                 <button
                   onClick={() => setShowAdminAuthModal(true)}
@@ -629,10 +617,10 @@ export default function App() {
               </div>
               <div>
                 <p className="font-bold text-slate-200">
-                  Esme AVM — Bilgi İşlem & Depo Yönetimi Koordinatörlüğü
+                  ESME Eğitim, İç Yönergeler Portalı
                 </p>
                 <p className="text-[11px] text-slate-400">
-                  esmeegitim — Resmi İç Yönergeler, Eğitim Standartları ve Dijital Tebellüğ Portalı • © {new Date().getFullYear()}
+                  ESME Eğitim, İç Yönergeler Portalı • © {new Date().getFullYear()}
                 </p>
               </div>
             </div>

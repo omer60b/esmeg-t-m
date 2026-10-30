@@ -475,7 +475,7 @@ export const initialTrainings: TrainingDocument[] = [
       {
         id: 'tb1',
         title: 'Yasal Uyarı, Kapsam ve 4 Adımlı Tebligat Protokolü',
-        content: `YASAL UYARI VE KRİTİK HÜKÜM: Resmi kurumlardan, mahkemelerden veya icra dairelerinden gelen tebligatlarda cevap ve itiraz süreleri evrakın mağazaya tebliğ edildiği gün işlemeye başlar. Yasal sürelerin (çoğunlukla 7 gün) kaçırılması, şirketimizin haksız yere borçlu ve kusurlu duruma düşmesine, banka hesaplarına bloke konmasına ve doğrudan maddi zarara yol açmaktadır.\n\n### KAPSAMDAKİ EVRAKLAR:\nİcra Müdürlüğü Bildirimleri, Ödeme Emirleri (Örnek No: 7 vb.), Maaş Haciz Müzekkereleri, Mahkeme Tensip ve Dava Zabıtları, SGK / Vergi Dairesi Yazıları, Belediye ve Noter İhtarnameleri.\n\n### 4 ADIMLI PROTOKOL:\n\n1. **Tebellüğ ve Teslim Alma (Tarih ve Saat Tespiti):** PTT posta memuru, kargo yetkilisi veya resmi görevliden teslim alınan sarı/beyaz tebligat zarflarının üzerindeki teslim tarihi ve kaşesi kesinlikle yırtılmamalı veya silinmemelidir. Evrakın hangi gün ve saatte teslim alındığı hemen not edilmelidir.\n\n2. **Aynı Anda / Anında E-Posta ile İletim (Ertelenemez):** Evrak mağazaya ulaştığı aynı saat içerisinde derhal Arife Hanım'a e-posta yoluyla iletilmelidir. Evrak yüksek çözünürlüklü olarak taranmalı; tarama imkânı yoksa tüm sayfaları, barkodları ve tebliğ kaşesi net okunacak şekilde aydınlık bir ortamda fotoğraflanıp eklenmelidir.\n\n3. **İletim Teyidinin Alınması:** E-posta gönderildikten sonra evrakın Arife Hanım'a ulaştığı teyit edilmelidir. "Akşam toplu gönderirim" veya "Pazartesi günü bakarız" gibi yaklaşımlar kesinlikle yasaktır; evrakın mağazada bekletilmesi hiçbir gerekçeyle kabul edilemez.\n\n4. **Fiziki Orijinal Nüshanın Arşivlenmesi ve Kargolanması:** Taranan evrakın fiziki aslı zımbaları sökülmeden, tebligat zarfıyla birlikte koruyucu bir dosyaya konulmalı; kaybolmayacak şekilde Arife Hanım adına genel merkeze kargolanmalıdır.`,
+        content: `YASAL UYARI VE KRİTİK HÜKÜM: Resmi kurumlardan, mahkemelerden veya icra dairelerinden gelen tebligatlarda cevap ve itiraz süreleri evrakın mağazaya tebliğ edildiği gün işlemeye başlar. Yasal sürelerin (çoğunlukla 7 gün) kaçırılması, şirketimizin haksız yere borçlu ve kusurlu duruma düşmesine, banka hesaplarına bloke konmasına ve doğrudan maddi zarara yol açmaktadır.\n\n### KAPSAMDAKİ EVRAKLAR:\nİcra Müdürlüğü Bildirimleri, Ödeme Emirleri (Örnek No: 7 vb.), Maaş Haciz Müzekkereleri, Mahkeme Tensip ve Dava Zabıtları, SGK / Vergi Dairesi Yazıları, Belediye ve Noter İhtarnameleri.\n\n### 4 ADIMLI PROTOKOL:\n\n1. **Teslim Alma ve Tebliğ Tarihi (Tarih ve Saat Tespiti):** PTT posta memuru, kargo yetkilisi veya resmi görevliden teslim alınan sarı/beyaz tebligat zarflarının üzerindeki teslim tarihi ve kaşesi kesinlikle yırtılmamalı veya silinmemelidir. Evrakın hangi gün ve saatte teslim alındığı hemen not edilmelidir.\n\n2. **Aynı Anda / Anında E-Posta ile İletim (Ertelenemez):** Evrak mağazaya ulaştığı aynı saat içerisinde derhal Arife Hanım'a e-posta yoluyla iletilmelidir. Evrak yüksek çözünürlüklü olarak taranmalı; tarama imkânı yoksa tüm sayfaları, barkodları ve tebliğ kaşesi net okunacak şekilde aydınlık bir ortamda fotoğraflanıp eklenmelidir.\n\n3. **İletim Teyidinin Alınması:** E-posta gönderildikten sonra evrakın Arife Hanım'a ulaştığı teyit edilmelidir. "Akşam toplu gönderirim" veya "Pazartesi günü bakarız" gibi yaklaşımlar kesinlikle yasaktır; evrakın mağazada bekletilmesi hiçbir gerekçeyle kabul edilemez.\n\n4. **Fiziki Orijinal Nüshanın Arşivlenmesi ve Kargolanması:** Taranan evrakın fiziki aslı zımbaları sökülmeden, tebligat zarfıyla birlikte koruyucu bir dosyaya konulmalı; kaybolmayacak şekilde Arife Hanım adına genel merkeze kargolanmalıdır.`,
         highlights: [
           'Tebligat itiraz süresi (çoğunlukla 7 gün) mağazaya ulaştığı gün başlar.',
           'Evrak mağazaya ulaştığı AYNI SAAT İÇERİSİNDE Arife Hanım\'a taranıp gönderilmelidir.',
@@ -493,7 +493,7 @@ export const initialTrainings: TrainingDocument[] = [
         to: 'arife.[soyad]@esme.com.tr',
         cc: 'İlgili Bölge Müdürü / Mağaza Müdürü',
         subject: 'ACİL — [Mağaza Adı] — Resmi Evrak / İcra Tebligatı — [Tarih]',
-        body: 'Sayın Arife Hanım,\n\nMağazamıza [GG.AA.YYYY] tarihinde teslim edilen resmi tebligat taranarak ekte sunulmuştur. Yasal sürelerin takibi için bilgilerinize arz ederiz:\n\n• Tebliğ Eden Kurum: [Örn: İstanbul 12. İcra Dairesi / Tüketici Mahkemesi]\n• Evrak / Esas No: [Örn: 2024/.... Esas]\n• Tebellüğ Tarihi: [Bugünün Tarihi ve Saati]'
+        body: 'Sayın Arife Hanım,\n\nMağazamıza [GG.AA.YYYY] tarihinde teslim edilen resmi tebligat taranarak ekte sunulmuştur. Yasal sürelerin takibi için bilgilerinize arz ederiz:\n\n• Tebliğ Eden Kurum: [Örn: İstanbul 12. İcra Dairesi / Tüketici Mahkemesi]\n• Evrak / Esas No: [Örn: 2024/.... Esas]\n• Teslim / Tebliğ Tarihi: [Bugünün Tarihi ve Saati]'
       }
     },
     quiz: [
@@ -1007,7 +1007,7 @@ export const initialTrainings: TrainingDocument[] = [
       },
       {
         id: 10,
-        title: 'Bölüm 08: Genel Değerlendirme, Kurumsal Sistemler ve Tebellüğ Onayı',
+        title: 'Bölüm 08: Genel Değerlendirme, Kurumsal Sistemler ve Başarı Onayı',
         subTitle: 'Operasyonel Verimlilik ve Müşteri Memnuniyeti Güvencesi • Ömer BAŞ & Turgut CESUR',
         categoryBadge: 'Bölüm 08: Değerlendirme & Sonuç',
         bullets: [
@@ -1016,7 +1016,7 @@ export const initialTrainings: TrainingDocument[] = [
           'Bu görevleri eksiksiz yerine getirmeleri; mağazanın satış performansını, müşteri memnuniyetini ve genel operasyonel verimliliğini doğrudan artırır.',
           'Kurum: ESME Mağazacılık Operasyonları • Sistemler: Nebim V3 ERP • DSIC El Terminali.',
           'Hazırlayanlar: Ömer BAŞ (Genel Yönetici) • Turgut CESUR (B.İ. ve Kasa Müdürü).',
-          'Tebellüğ: Tüm mağaza depocuları bu kitapçık ve sunumdaki tüm kuralları okuduğunu, anladığını ve harfiyen uygulayacağını dijital olarak tebellüğ eder.'
+          'Taahhüt: Tüm mağaza depocuları bu kitapçık ve sunumdaki tüm kuralları okuduğunu, anladığını ve harfiyen uygulayacağını dijital olarak taahhüt eder.'
         ],
         tableData: {
           headers: ['Kurumsal Parametre', 'Sistem & Sorumlu', 'Operasyonel Güvence'],
@@ -1024,10 +1024,10 @@ export const initialTrainings: TrainingDocument[] = [
             ['Kurum', 'ESME Mağazacılık Operasyonları', '35 Şube Tüm Depo & Reyon Standartları'],
             ['Sistem Altyapısı', 'Nebim V3 ERP & DSIC El Terminali', 'Barkodlu Mal Kabul, Kör Sayım & Miktarlı Ekstre'],
             ['Hazırlayanlar & Onay', 'Ömer BAŞ & Turgut CESUR', 'Genel Yönetim & Bilgi İşlem Koordinatörlüğü'],
-            ['Tebellüğ Durumu', 'Zorunlu Resmi Taahhütname', 'En az %80 Başarı ile Dijital Sertifika Tescili']
+            ['Eğitim Durumu', 'Zorunlu Kurumsal Taahhütname', 'En az %80 Başarı ile Dijital Sertifika Tescili']
           ]
         },
-        keyTakeaway: 'Tebrikler! Depocu Eğitim ve Görev Tanımı sunumunu tamamladınız. Şimdi "Anlama Sınavı ve Tebellüğ" sekmesine geçerek başarı sınavını çözebilir ve resmi sertifikanızı alabilirsiniz.',
+        keyTakeaway: 'Tebrikler! Depocu Eğitim ve Görev Tanımı sunumunu tamamladınız. Şimdi "Sınav" sekmesine geçerek başarı sınavını çözebilir ve sertifikanızı alabilirsiniz.',
         notes: 'Bu eğitim dokümanı ESME Mağazacılık iç denetim ve teftiş standartları gereğince tüm mağaza personelleri için resmi ve bağlayıcıdır.'
       }
     ],

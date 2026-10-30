@@ -156,19 +156,31 @@ export function mergeTrainingsList(
 
     if (defaultMap.has(t.id)) {
       const existing = defaultMap.get(t.id)!;
-      // If incoming explicitly has a video or explicitly cleared it (empty string or none)
-      const mergedVideoUrl = hasIncomingVideo 
-        ? cleanVideoUrl 
-        : (t.videoUrl === '' || t.videoType === 'none' ? '' : (existing.videoUrl || ''));
-      const mergedVideoType = mergedVideoUrl !== ''
-        ? (t.videoType && t.videoType !== 'none' ? t.videoType : 'link')
-        : 'none';
-      const mergedVideoTitle = mergedVideoUrl !== ''
-        ? (t.videoTitle || existing.videoTitle || existing.title)
-        : undefined;
-      const mergedVideoDuration = mergedVideoUrl !== ''
-        ? (t.videoDuration || existing.videoDuration || '05:00')
-        : undefined;
+      const hasExistingVideo = Boolean(existing.videoUrl && existing.videoUrl.trim() !== '');
+      let mergedVideoUrl = existing.videoUrl || '';
+      let mergedVideoType = existing.videoType || 'none';
+      let mergedVideoTitle = existing.videoTitle;
+      let mergedVideoDuration = existing.videoDuration;
+
+      if (hasIncomingVideo) {
+        mergedVideoUrl = cleanVideoUrl;
+        mergedVideoType = t.videoType && t.videoType !== 'none' ? t.videoType : 'link';
+        mergedVideoTitle = t.videoTitle || t.title || existing.title;
+        mergedVideoDuration = t.videoDuration || '05:00';
+      } else if (hasExistingVideo) {
+        const isStrictlyNewer = Boolean(t.updatedAt && existing.updatedAt && t.updatedAt > existing.updatedAt);
+        if (isStrictlyNewer && t.videoUrl === '' && t.videoType === 'none') {
+          mergedVideoUrl = '';
+          mergedVideoType = 'none';
+          mergedVideoTitle = undefined;
+          mergedVideoDuration = undefined;
+        } else {
+          mergedVideoUrl = existing.videoUrl!;
+          mergedVideoType = existing.videoType && existing.videoType !== 'none' ? existing.videoType : 'link';
+          mergedVideoTitle = existing.videoTitle || existing.title;
+          mergedVideoDuration = existing.videoDuration || '05:00';
+        }
+      }
 
       defaultMap.set(t.id, {
         ...existing,
@@ -402,7 +414,7 @@ export async function resetTrainingsToDefault(): Promise<TrainingDocument[]> {
 }
 
 /**
- * Get stored completions (tebellüğ records)
+ * Get stored completions (exam success & completion records)
  */
 export function getStoredCompletions(): TrainingCompletion[] {
   try {
@@ -512,7 +524,7 @@ export async function deleteTrainingCompletion(completionId: string): Promise<Tr
 }
 
 /**
- * Clear ALL training completions (tebellüğ records) from localStorage, BroadcastChannel, and Firestore
+ * Clear ALL training completions (exam success records) from localStorage, BroadcastChannel, and Firestore
  */
 export async function clearAllCompletions(): Promise<boolean> {
   try {
@@ -563,8 +575,8 @@ export async function syncAdminAccountsToFirestore(
 const defaultAnnouncements: TrainingAnnouncement[] = [
   {
     id: 'ann_default_1',
-    title: 'Acil Operasyonel Duyuru: Kasa Kapanış & Tebellüğ Kontrolleri',
-    content: 'Tüm Esme AVM şubelerimizde görevli kasa ve depo personellerinin güncel yönergeleri okuyup 5 soruluk yeterlilik sınavını tamamlayarak dijital tebellüğ sertifikalarını almaları zorunludur.',
+    title: 'Acil Operasyonel Duyuru: Kasa Kapanış ve Eğitim Tamamlama Kontrolleri',
+    content: 'Tüm Esme AVM şubelerimizde görevli kasa ve depo personellerinin güncel yönergeleri okuyup 5 soruluk yeterlilik sınavını tamamlayarak dijital başarı sertifikalarını almaları zorunludur.',
     priority: 'acil',
     author: 'Ömer BAŞ & Turgut CESUR',
     createdAt: '2026-01-15T09:00:00.000Z',
@@ -733,13 +745,13 @@ export function subscribeToTrainingUpdates(
         const hasPrevVid = Boolean(prev.videoUrl && prev.videoUrl.trim() !== '');
         const hasCurrVid = Boolean(t.videoUrl && t.videoUrl.trim() !== '');
         let target = currTime >= prevTime ? t : prev;
-        if (!hasCurrVid && hasPrevVid && t.videoType !== 'none') {
+        if (!hasCurrVid && hasPrevVid) {
           target = {
             ...target,
             videoUrl: prev.videoUrl,
-            videoType: prev.videoType || 'link',
-            videoTitle: prev.videoTitle,
-            videoDuration: prev.videoDuration
+            videoType: prev.videoType && prev.videoType !== 'none' ? prev.videoType : 'link',
+            videoTitle: prev.videoTitle || prev.title,
+            videoDuration: prev.videoDuration || '05:00'
           };
         }
         map.set(t.id, target);
@@ -985,13 +997,13 @@ export async function fetchRemoteTrainings(): Promise<{
             const hasPrevVid = Boolean(prev.videoUrl && prev.videoUrl.trim() !== '');
             const hasCurrVid = Boolean(item.videoUrl && item.videoUrl.trim() !== '');
             let target = currTime >= prevTime ? item : prev;
-            if (!hasCurrVid && hasPrevVid && item.videoType !== 'none') {
+            if (!hasCurrVid && hasPrevVid) {
               target = {
                 ...target,
                 videoUrl: prev.videoUrl,
-                videoType: prev.videoType || 'link',
-                videoTitle: prev.videoTitle,
-                videoDuration: prev.videoDuration
+                videoType: prev.videoType && prev.videoType !== 'none' ? prev.videoType : 'link',
+                videoTitle: prev.videoTitle || prev.title,
+                videoDuration: prev.videoDuration || '05:00'
               };
             }
             map.set(item.id, target);

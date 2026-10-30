@@ -304,7 +304,7 @@ export const TrainingCatalogView: React.FC<TrainingCatalogViewProps> = ({
                   </div>
                 </div>
 
-                {/* Card Footer: Actions and Tebellüğ State */}
+                {/* Card Footer: Actions and Status */}
                 <div className="p-4 bg-slate-50/70 dark:bg-slate-950/50 border-t border-slate-100 dark:border-slate-800">
                   <div className="flex items-center justify-between mb-3 text-xs">
                     <span className="text-slate-400 flex items-center gap-1">
@@ -312,11 +312,11 @@ export const TrainingCatalogView: React.FC<TrainingCatalogViewProps> = ({
                     </span>
                     {isCompleted ? (
                       <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Tebellüğ Edildi
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Tamamlandı
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
-                        <Clock className="w-3.5 h-3.5" /> Tebellüğ Bekliyor
+                        <Clock className="w-3.5 h-3.5" /> Tamamlanmadı
                       </span>
                     )}
                   </div>
@@ -362,7 +362,7 @@ export const TrainingCatalogView: React.FC<TrainingCatalogViewProps> = ({
                             </>
                           ) : (
                             <>
-                              <Award className="w-3.5 h-3.5" /> Tebellüğ Et
+                              <Award className="w-3.5 h-3.5" /> Sınava Gir & Onayla
                             </>
                           )}
                         </button>
