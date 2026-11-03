@@ -59,7 +59,10 @@ import {
   endMeetingForAll,
   setAllParticipantsAudioMuted,
   recordAttendanceLog,
-  updateAttendanceLogOnLeave
+  updateAttendanceLogOnLeave,
+  sendWebRTCSignal,
+  subscribeToWebRTCSignals,
+  purgeOldWebRTCSignals
 } from '../services/meetingService';
 
 interface ZoomMeetingRoomProps {
@@ -70,6 +73,133 @@ interface ZoomMeetingRoomProps {
   appTheme?: 'sepia' | 'light' | 'dark';
   initialMeetingId?: string;
 }
+
+// Google STUN Servers for robust peer-to-peer WebRTC traversal
+const RTC_ICE_CONFIG: RTCConfiguration = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' }
+  ],
+  iceCandidatePoolSize: 10
+};
+
+interface RemoteVideoPlayerProps {
+  participant: MeetingParticipant;
+  stream?: MediaStream;
+  isSpeaking?: boolean;
+  isFeatured?: boolean;
+  onPin?: () => void;
+  isPinned?: boolean;
+}
+
+/**
+ * Dedicated Remote Video & Audio Player
+ * Ensures remote video is visible when camera is on, and audio is always streamed through speakers
+ */
+const RemoteVideoPlayer: React.FC<RemoteVideoPlayerProps> = ({
+  participant,
+  stream,
+  isSpeaking = false,
+  isFeatured = false
+}) => {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [hasLiveVideo, setHasLiveVideo] = useState(false);
+
+  useEffect(() => {
+    if (stream) {
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
+      if (audioRef.current) {
+        audioRef.current.srcObject = stream;
+        audioRef.current.play().catch(() => {});
+      }
+
+      const checkTracks = () => {
+        const vTracks = stream.getVideoTracks();
+        const hasActive = vTracks.length > 0 && vTracks.some(t => t.enabled && t.readyState === 'live');
+        setHasLiveVideo(hasActive);
+      };
+
+      checkTracks();
+      stream.addEventListener('addtrack', checkTracks);
+      stream.addEventListener('removetrack', checkTracks);
+      return () => {
+        stream.removeEventListener('addtrack', checkTracks);
+        stream.removeEventListener('removetrack', checkTracks);
+      };
+    } else {
+      setHasLiveVideo(false);
+    }
+  }, [stream]);
+
+  // Audio mute sync
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.muted = !!participant.isAudioMuted;
+    }
+    if (videoRef.current) {
+      videoRef.current.muted = !!participant.isAudioMuted;
+    }
+  }, [participant.isAudioMuted]);
+
+  const showVideo = !participant.isVideoOff && stream && hasLiveVideo;
+
+  return (
+    <div className="w-full h-full relative flex items-center justify-center overflow-hidden bg-[#181818]">
+      {/* Explicit Audio Element ensuring remote sound is always output through speakers */}
+      <audio
+        ref={audioRef}
+        autoPlay
+        playsInline
+        muted={!!participant.isAudioMuted}
+      />
+
+      {/* Real Live WebRTC Video Element */}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted={!!participant.isAudioMuted}
+        className={`w-full h-full object-cover transition-opacity duration-300 ${
+          showVideo ? 'opacity-100 block' : 'opacity-0 pointer-events-none absolute'
+        }`}
+      />
+
+      {/* When video is off by participant or establishing connection, display avatar */}
+      {!showVideo && (
+        <div className="flex flex-col items-center justify-center gap-2.5 select-none z-10 px-4 text-center">
+          <div className={`${isFeatured ? 'w-28 sm:w-36 h-28 sm:h-36 text-4xl sm:text-5xl ring-8 ring-white/10' : 'w-18 sm:w-22 h-18 sm:h-22 text-2xl sm:text-3xl ring-4 ring-black/40'} rounded-full bg-gradient-to-br ${participant.avatarColor || getAvatarColor(participant.name)} flex items-center justify-center text-white font-black shadow-2xl`}>
+            {getInitials(participant.name)}
+          </div>
+          <div>
+            <span className={`${isFeatured ? 'text-base sm:text-lg' : 'text-xs sm:text-sm'} font-extrabold text-white block truncate max-w-[220px]`}>
+              {participant.name}
+            </span>
+            <span className="text-[11px] text-slate-400 font-medium block">
+              {participant.branchName}
+            </span>
+            {participant.isVideoOff ? (
+              <span className="text-[10px] text-slate-400 bg-black/60 px-2 py-0.5 rounded-full mt-1.5 inline-block border border-white/10">
+                Kamera Kapalı
+              </span>
+            ) : !stream ? (
+              <span className="text-[10px] text-emerald-400 bg-emerald-950/70 border border-emerald-700/60 px-2.5 py-0.5 rounded-full mt-1.5 inline-flex items-center gap-1 animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                Bağlantı Kuruluyor...
+              </span>
+            ) : null}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   currentBranchId,
@@ -139,6 +269,11 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   const analyserRef = useRef<AnalyserNode | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  // WebRTC Peer Connections and Remote Media Streams
+  const peerConnectionsRef = useRef<{ [peerId: string]: RTCPeerConnection }>({});
+  const pendingCandidatesRef = useRef<{ [peerId: string]: RTCIceCandidateInit[] }>({});
+  const [remoteStreams, setRemoteStreams] = useState<{ [peerId: string]: MediaStream }>({});
+
   // Whiteboard canvas references
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawingRef = useRef(false);
@@ -154,6 +289,123 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   // Attendance log reference for manager reporting
   const attendanceLogIdRef = useRef<string | null>(null);
   const attendanceJoinedAtRef = useRef<string>(new Date().toISOString());
+
+  // WebRTC helper: Create and configure Peer Connection
+  const createPeerConnection = useCallback((remotePeerId: string, isInitiator: boolean) => {
+    if (peerConnectionsRef.current[remotePeerId]) {
+      return peerConnectionsRef.current[remotePeerId];
+    }
+
+    const pc = new RTCPeerConnection(RTC_ICE_CONFIG);
+    peerConnectionsRef.current[remotePeerId] = pc;
+
+    // Attach local audio and video tracks if available
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        try {
+          pc.addTrack(track, localStreamRef.current!);
+        } catch {}
+      });
+    }
+
+    // Send generated ICE candidates to remote peer via Firestore
+    pc.onicecandidate = (event) => {
+      if (event.candidate && meetingCode) {
+        sendWebRTCSignal(
+          meetingCode,
+          localParticipantId,
+          remotePeerId,
+          'candidate',
+          JSON.stringify(event.candidate.toJSON())
+        ).catch(() => {});
+      }
+    };
+
+    // Receive remote media tracks (Audio and Video)
+    pc.ontrack = (event) => {
+      const incomingStream = event.streams[0] || new MediaStream([event.track]);
+      setRemoteStreams(prev => {
+        const existing = prev[remotePeerId];
+        if (existing) {
+          if (!existing.getTracks().some(t => t.id === event.track.id)) {
+            existing.addTrack(event.track);
+          }
+          return { ...prev, [remotePeerId]: existing };
+        }
+        return { ...prev, [remotePeerId]: incomingStream };
+      });
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'closed' || pc.connectionState === 'failed') {
+        setRemoteStreams(prev => {
+          const next = { ...prev };
+          delete next[remotePeerId];
+          return next;
+        });
+      }
+    };
+
+    return pc;
+  }, [meetingCode, localParticipantId]);
+
+  // WebRTC Signal Dispatcher (Offer, Answer, Candidate)
+  const handleIncomingSignal = useCallback(async (signal: { senderId: string; receiverId: string; type: string; payload: string }) => {
+    const { senderId, type, payload } = signal;
+    if (!payload || !meetingCode) return;
+
+    try {
+      if (type === 'offer') {
+        const offerData = JSON.parse(payload);
+        const pc = createPeerConnection(senderId, false);
+        await pc.setRemoteDescription(new RTCSessionDescription(offerData));
+
+        // Flush any candidates received prior to remote description
+        if (pendingCandidatesRef.current[senderId]) {
+          for (const cand of pendingCandidatesRef.current[senderId]) {
+            await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+          }
+          delete pendingCandidatesRef.current[senderId];
+        }
+
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        await sendWebRTCSignal(
+          meetingCode,
+          localParticipantId,
+          senderId,
+          'answer',
+          JSON.stringify(answer)
+        );
+      } else if (type === 'answer') {
+        const answerData = JSON.parse(payload);
+        const pc = peerConnectionsRef.current[senderId];
+        if (pc && pc.signalingState === 'have-local-offer') {
+          await pc.setRemoteDescription(new RTCSessionDescription(answerData));
+          if (pendingCandidatesRef.current[senderId]) {
+            for (const cand of pendingCandidatesRef.current[senderId]) {
+              await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+            }
+            delete pendingCandidatesRef.current[senderId];
+          }
+        }
+      } else if (type === 'candidate') {
+        const candidateData = JSON.parse(payload);
+        const pc = peerConnectionsRef.current[senderId];
+        if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+          await pc.addIceCandidate(new RTCIceCandidate(candidateData)).catch(() => {});
+        } else {
+          if (!pendingCandidatesRef.current[senderId]) {
+            pendingCandidatesRef.current[senderId] = [];
+          }
+          pendingCandidatesRef.current[senderId].push(candidateData);
+        }
+      }
+    } catch (err) {
+      console.warn("Signal processing warning:", err);
+    }
+  }, [meetingCode, localParticipantId, createPeerConnection]);
 
   // Initialize camera and microphone in Lobby
   const initLocalMedia = useCallback(async () => {
@@ -171,6 +423,19 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
+
+      // If peer connections exist, attach or replace tracks
+      Object.values(peerConnectionsRef.current).forEach(pc => {
+        stream.getTracks().forEach(track => {
+          const senders = pc.getSenders();
+          const existing = senders.find(s => s.track && s.track.kind === track.kind);
+          if (existing) {
+            existing.replaceTrack(track).catch(() => {});
+          } else {
+            try { pc.addTrack(track, stream); } catch {}
+          }
+        });
+      });
 
       // Web Audio API for speaking detection
       try {
@@ -241,6 +506,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
     // Purge old stale or test records when entering
     purgeStaleAndTestParticipants(meetingCode);
+    purgeOldWebRTCSignals(meetingCode);
 
     const unsubRoom = subscribeToMeetingRoom(meetingCode, (room) => {
       if (room) {
@@ -278,6 +544,11 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
       }
     });
 
+    // Subscribe to WebRTC signaling for peer audio & video streaming
+    const unsubSignals = subscribeToWebRTCSignals(meetingCode, localParticipantId, (signal) => {
+      handleIncomingSignal(signal);
+    });
+
     // Send active presence heartbeat every 6 seconds
     const pingInterval = setInterval(() => {
       pingParticipant(meetingCode, localParticipantId);
@@ -298,61 +569,160 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
       unsubRoom();
       unsubParticipants();
       unsubChat();
+      unsubSignals();
+
+      // Close all active peer connections
+      Object.values(peerConnectionsRef.current).forEach(pc => {
+        try { pc.close(); } catch {}
+      });
+      peerConnectionsRef.current = {};
+      setRemoteStreams({});
     };
-  }, [isInMeeting, meetingCode, activeSidePanel, localParticipantId]);
+  }, [isInMeeting, meetingCode, activeSidePanel, localParticipantId, handleIncomingSignal]);
 
-  // Handle Join Meeting
-  const handleJoinMeeting = async () => {
-    const finalBranch = branches.find(b => b.id === selectedBranchId) || currentBranch;
-    const cleanCode = (meetingCode.trim() || DEFAULT_MEETING_ID).toUpperCase();
-    setMeetingCode(cleanCode);
+  // Synchronize WebRTC peer connections with remote participants
+  useEffect(() => {
+    if (!isInMeeting || !meetingCode) return;
 
-    // Ensure Room Exists or Create it
-    const room = await createOrGetMeetingRoom(
-      cleanCode,
-      `${cleanCode} — ESME Koordinasyon ve Eğitim Toplantısı`,
-      displayName,
-      finalBranch.id,
-      finalBranch.name
+    const remotes = participants.filter(p => 
+      p.id !== localParticipantId && 
+      !p.id.startsWith('test_') && 
+      !p.name.toLowerCase().includes('test')
     );
-    setMeetingRoom(room);
 
-    // Register local participant
-    const participant: MeetingParticipant = {
-      id: localParticipantId,
-      name: displayName,
-      branchName: finalBranch.name,
-      branchId: finalBranch.id,
-      role: isAdmin || room.hostName === displayName ? 'host' : 'participant',
-      isAudioMuted,
-      isVideoOff,
-      isHandRaised: false,
-      isScreenSharing: false,
-      joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-      avatarColor: getAvatarColor(displayName)
-    };
+    const remoteIds = new Set(remotes.map(p => p.id));
 
-    await joinMeetingParticipant(cleanCode, participant);
-    setIsInMeeting(true);
+    // Connect to newly joined participants
+    remotes.forEach(p => {
+      if (!peerConnectionsRef.current[p.id]) {
+        const shouldInitiate = localParticipantId > p.id;
+        const pc = createPeerConnection(p.id, shouldInitiate);
+        if (shouldInitiate) {
+          pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true })
+            .then(offer => pc.setLocalDescription(offer))
+            .then(() => {
+              if (pc.localDescription) {
+                sendWebRTCSignal(
+                  meetingCode,
+                  localParticipantId,
+                  p.id,
+                  'offer',
+                  JSON.stringify(pc.localDescription)
+                ).catch(() => {});
+              }
+            })
+            .catch(err => console.warn('WebRTC offer error:', err));
+        }
+      }
+    });
 
-    // Record attendance log for manager reporting
+    // Clean up connections for participants that have left
+    Object.keys(peerConnectionsRef.current).forEach(peerId => {
+      if (!remoteIds.has(peerId)) {
+        try {
+          peerConnectionsRef.current[peerId].close();
+        } catch {}
+        delete peerConnectionsRef.current[peerId];
+        setRemoteStreams(prev => {
+          const next = { ...prev };
+          delete next[peerId];
+          return next;
+        });
+      }
+    });
+  }, [participants, isInMeeting, meetingCode, localParticipantId, createPeerConnection]);
+
+  // Handle Join Meeting (Immediate Optimistic Room Entry)
+  const handleJoinMeeting = () => {
     try {
+      const finalBranch = branches.find(b => b.id === selectedBranchId) || currentBranch || { id: 10, name: 'Güneşli Mağazası', code: 'M10' };
+      const cleanCode = (meetingCode?.trim() || DEFAULT_MEETING_ID).toUpperCase();
+      setMeetingCode(cleanCode);
+
+      const safeDisplayName = displayName?.trim() || `${finalBranch.name} Sorumlusu`;
+      setDisplayName(safeDisplayName);
+
+      const initialRoom: MeetingRoom = {
+        id: cleanCode.toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
+        title: `${cleanCode} — ESME Koordinasyon ve Eğitim Toplantısı`,
+        hostName: safeDisplayName,
+        hostBranchId: finalBranch.id,
+        hostBranchName: finalBranch.name,
+        passcode: '',
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        allowScreenShare: true
+      };
+
+      // 1. INSTANT ROOM ENTRY: The user immediately sees the room UI
+      setMeetingRoom(initialRoom);
+      setIsInMeeting(true);
+
+      // 2. Prepare local participant payload
+      const participant: MeetingParticipant = {
+        id: localParticipantId,
+        name: safeDisplayName,
+        branchName: finalBranch.name,
+        branchId: finalBranch.id,
+        role: isAdmin ? 'host' : 'participant',
+        isAudioMuted,
+        isVideoOff,
+        isHandRaised: false,
+        isScreenSharing: false,
+        joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+        avatarColor: getAvatarColor(safeDisplayName)
+      };
+
+      // 3. Background Non-Blocking Firestore Sync
+      createOrGetMeetingRoom(
+        cleanCode,
+        `${cleanCode} — ESME Koordinasyon ve Eğitim Toplantısı`,
+        safeDisplayName,
+        finalBranch.id,
+        finalBranch.name
+      ).then(room => {
+        if (room) setMeetingRoom(room);
+      }).catch(err => {
+        console.warn("createOrGetMeetingRoom background sync warning:", err);
+      });
+
+      joinMeetingParticipant(cleanCode, participant).catch(err => {
+        console.warn("joinMeetingParticipant background sync warning:", err);
+      });
+
+      // Attendance log for reporting
       const nowIso = new Date().toISOString();
       attendanceJoinedAtRef.current = nowIso;
-      const logId = await recordAttendanceLog(cleanCode, participant, room.title);
-      attendanceLogIdRef.current = logId;
-    } catch (attErr) {
-      console.warn("Attendance log record error:", attErr);
-    }
+      recordAttendanceLog(cleanCode, participant, initialRoom.title).then(logId => {
+        attendanceLogIdRef.current = logId;
+      }).catch(() => {});
 
-    // Re-bind local video element if stream active
-    setTimeout(() => {
-      if (localVideoRef.current && localStreamRef.current) {
-        localVideoRef.current.srcObject = localStreamRef.current;
-        localVideoRef.current.play().catch(() => {});
-      }
-    }, 300);
+      // 4. Ensure local video attachment
+      setTimeout(() => {
+        if (localVideoRef.current && localStreamRef.current) {
+          localVideoRef.current.srcObject = localStreamRef.current;
+          localVideoRef.current.play().catch(() => {});
+        }
+      }, 50);
+      setTimeout(() => {
+        if (localVideoRef.current && localStreamRef.current) {
+          localVideoRef.current.srcObject = localStreamRef.current;
+          localVideoRef.current.play().catch(() => {});
+        }
+      }, 250);
+    } catch (joinError) {
+      console.warn("handleJoinMeeting resilient recovery:", joinError);
+      setIsInMeeting(true);
+    }
   };
+
+  // Re-bind local video stream whenever meeting or viewMode changes
+  useEffect(() => {
+    if (isInMeeting && localVideoRef.current && localStreamRef.current) {
+      localVideoRef.current.srcObject = localStreamRef.current;
+      localVideoRef.current.play().catch(() => {});
+    }
+  }, [isInMeeting, viewMode, isVideoOff]);
 
   // Handle Leave Meeting
   const handleLeaveMeeting = async () => {
@@ -367,8 +737,17 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     }
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach(t => t.stop());
+      screenStreamRef.current = null;
       setIsScreenSharing(false);
     }
+
+    // Close all WebRTC peer connections
+    Object.values(peerConnectionsRef.current).forEach(pc => {
+      try { pc.close(); } catch {}
+    });
+    peerConnectionsRef.current = {};
+    setRemoteStreams({});
+
     setIsInMeeting(false);
     setActiveSidePanel('none');
     setShowWhiteboard(false);
@@ -427,6 +806,17 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
         screenStreamRef.current = null;
       }
       setIsScreenSharing(false);
+
+      // Revert video tracks back to camera on all peer connections
+      const cameraTrack = localStreamRef.current?.getVideoTracks()[0] || null;
+      Object.values(peerConnectionsRef.current).forEach(pc => {
+        const senders = pc.getSenders();
+        const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+        if (videoSender && cameraTrack) {
+          videoSender.replaceTrack(cameraTrack).catch(() => {});
+        }
+      });
+
       if (isInMeeting && meetingCode) {
         await updateParticipantStatus(meetingCode, localParticipantId, {
           isScreenSharing: false
@@ -443,8 +833,26 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
         screenStreamRef.current = stream;
         setIsScreenSharing(true);
 
+        const screenTrack = stream.getVideoTracks()[0];
+        // Stream screen track to all connected peers
+        Object.values(peerConnectionsRef.current).forEach(pc => {
+          const senders = pc.getSenders();
+          const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+          if (videoSender && screenTrack) {
+            videoSender.replaceTrack(screenTrack).catch(() => {});
+          }
+        });
+
         stream.getVideoTracks()[0].onended = () => {
           setIsScreenSharing(false);
+          const cameraTrack = localStreamRef.current?.getVideoTracks()[0] || null;
+          Object.values(peerConnectionsRef.current).forEach(pc => {
+            const senders = pc.getSenders();
+            const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+            if (videoSender && cameraTrack) {
+              videoSender.replaceTrack(cameraTrack).catch(() => {});
+            }
+          });
           if (isInMeeting && meetingCode) {
             updateParticipantStatus(meetingCode, localParticipantId, {
               isScreenSharing: false
@@ -1187,28 +1595,38 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
                 
                 {/* Local user on big screen */}
                 {featuredSpeaker.id === localParticipantId ? (
-                  <video
-                    ref={localVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className={`w-full h-full object-cover transform -scale-x-100 ${
-                      isVideoOff ? 'hidden' : 'block'
-                    } ${isVirtualBlur ? 'blur-sm' : ''}`}
-                  />
-                ) : null}
+                  <>
+                    <video
+                      ref={localVideoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className={`w-full h-full object-cover transform -scale-x-100 ${
+                        isVideoOff ? 'hidden' : 'block'
+                      } ${isVirtualBlur ? 'blur-sm' : ''}`}
+                    />
 
-                {/* Camera off or Remote Avatar on big screen */}
-                {(featuredSpeaker.id !== localParticipantId || isVideoOff) && (
-                  <div className="flex flex-col items-center justify-center gap-4">
-                    <div className={`w-28 sm:w-36 h-28 sm:h-36 rounded-full bg-gradient-to-br ${featuredSpeaker.avatarColor || getAvatarColor(featuredSpeaker.name)} flex items-center justify-center text-white text-4xl sm:text-5xl font-black shadow-2xl ring-8 ring-white/5`}>
-                      {getInitials(featuredSpeaker.name)}
-                    </div>
-                    <div className="text-center">
-                      <p className="text-base sm:text-lg font-black text-white">{featuredSpeaker.name}</p>
-                      <p className="text-xs text-slate-400 font-semibold">{featuredSpeaker.branchName}</p>
-                    </div>
-                  </div>
+                    {/* Camera off Avatar for local user */}
+                    {isVideoOff && (
+                      <div className="flex flex-col items-center justify-center gap-4">
+                        <div className={`w-28 sm:w-36 h-28 sm:h-36 rounded-full bg-gradient-to-br ${featuredSpeaker.avatarColor || getAvatarColor(featuredSpeaker.name)} flex items-center justify-center text-white text-4xl sm:text-5xl font-black shadow-2xl ring-8 ring-white/5`}>
+                          {getInitials(featuredSpeaker.name)}
+                        </div>
+                        <div className="text-center">
+                          <p className="text-base sm:text-lg font-black text-white">{featuredSpeaker.name}</p>
+                          <p className="text-xs text-slate-400 font-semibold">{featuredSpeaker.branchName}</p>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* Remote user on big screen with real video and audio */
+                  <RemoteVideoPlayer
+                    participant={featuredSpeaker}
+                    stream={remoteStreams[featuredSpeaker.id]}
+                    isSpeaking={!featuredSpeaker.isAudioMuted}
+                    isFeatured={true}
+                  />
                 )}
 
                 {/* Active Speaker Glowing Border */}
@@ -1313,37 +1731,41 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
                           : 'border-white/10 hover:border-white/25'
                       }`}
                     >
-                      {/* Live Video element for local user */}
-                      {isLocal && (
-                        <video
-                          ref={localVideoRef}
-                          autoPlay
-                          playsInline
-                          muted
-                          className={`w-full h-full object-cover transform -scale-x-100 ${
-                            isVideoOffState ? 'hidden' : 'block'
-                          } ${isVirtualBlur ? 'blur-sm' : ''}`}
+                      {/* Local user tile */}
+                      {isLocal ? (
+                        <>
+                          <video
+                            ref={localVideoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className={`w-full h-full object-cover transform -scale-x-100 ${
+                              isVideoOffState ? 'hidden' : 'block'
+                            } ${isVirtualBlur ? 'blur-sm' : ''}`}
+                          />
+
+                          {/* Camera Off Avatar Screen for local user */}
+                          {isVideoOffState && (
+                            <div className="flex flex-col items-center justify-center gap-2 select-none">
+                              <div className={`w-18 sm:w-22 h-18 sm:h-22 rounded-full bg-gradient-to-br ${p.avatarColor || getAvatarColor(p.name)} flex items-center justify-center text-white text-2xl sm:text-3xl font-black shadow-xl ring-4 ring-black/40`}>
+                                {getInitials(p.name)}
+                              </div>
+                              <span className="text-xs font-bold text-slate-200">{p.name}</span>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        /* Remote participant live WebRTC video & audio */
+                        <RemoteVideoPlayer
+                          participant={p}
+                          stream={remoteStreams[p.id]}
+                          isSpeaking={isSpeaking}
+                          isPinned={isPinned === p.id}
+                          onPin={() => {
+                            setIsPinned(isPinned === p.id ? null : p.id);
+                            setViewMode('speaker');
+                          }}
                         />
-                      )}
-
-                      {/* Camera Off Avatar Screen */}
-                      {(isVideoOffState || (!isLocal && p.isVideoOff)) && (
-                        <div className="flex flex-col items-center justify-center gap-2 select-none">
-                          <div className={`w-18 sm:w-22 h-18 sm:h-22 rounded-full bg-gradient-to-br ${p.avatarColor || getAvatarColor(p.name)} flex items-center justify-center text-white text-2xl sm:text-3xl font-black shadow-xl ring-4 ring-black/40`}>
-                            {getInitials(p.name)}
-                          </div>
-                          <span className="text-xs font-bold text-slate-200">{p.name}</span>
-                        </div>
-                      )}
-
-                      {/* Remote participant camera placeholder */}
-                      {!isLocal && !p.isVideoOff && (
-                        <div className="w-full h-full relative bg-slate-900 flex items-center justify-center overflow-hidden">
-                          <div className={`w-20 h-20 rounded-full bg-gradient-to-br ${p.avatarColor || getAvatarColor(p.name)} flex items-center justify-center text-white text-2xl font-black opacity-80`}>
-                            {getInitials(p.name)}
-                          </div>
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
-                        </div>
                       )}
 
                       {/* Hand Raised Badge (Zoom ✋) */}

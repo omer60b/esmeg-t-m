@@ -64,9 +64,27 @@ export async function createOrGetMeetingRoom(
   const cleanId = (meetingId.trim() || DEFAULT_MEETING_ID).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
   const roomRef = doc(db, 'meetings', cleanId);
   
+  const fallbackRoom: MeetingRoom = {
+    id: cleanId,
+    title: title || 'ESME Mağazalar Genel Koordinasyon ve Eğitim Toplantısı',
+    hostName: hostName || 'Toplantı Yöneticisi',
+    hostBranchId,
+    hostBranchName,
+    passcode: passcode || '',
+    status: 'active',
+    createdAt: new Date().toISOString(),
+    allowScreenShare: true
+  };
+
   try {
-    const snap = await getDoc(roomRef);
-    if (snap.exists()) {
+    // 2-second timeout race prevents indefinite Firestore hang
+    const getPromise = getDoc(roomRef);
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error('timeout')), 2000)
+    );
+    const snap = await Promise.race([getPromise, timeoutPromise]);
+
+    if (snap && snap.exists()) {
       const data = snap.data() as MeetingRoom;
       return {
         ...data,
@@ -74,34 +92,15 @@ export async function createOrGetMeetingRoom(
       };
     }
 
-    const newRoom: MeetingRoom = {
-      id: cleanId,
-      title: title || 'ESME Mağazalar Genel Koordinasyon ve Eğitim Toplantısı',
-      hostName: hostName || 'Toplantı Yöneticisi',
-      hostBranchId,
-      hostBranchName,
-      passcode: passcode || '',
-      status: 'active',
-      createdAt: new Date().toISOString(),
-      allowScreenShare: true
-    };
-
-    await setDoc(roomRef, newRoom);
-    return newRoom;
+    // Set new room with timeout race
+    await Promise.race([
+      setDoc(roomRef, fallbackRoom),
+      new Promise<void>((resolve) => setTimeout(resolve, 2000))
+    ]);
+    return fallbackRoom;
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `meetings/${cleanId}`);
-    // Fallback in-memory object
-    return {
-      id: cleanId,
-      title: title || 'ESME Mağazalar Genel Koordinasyon ve Eğitim Toplantısı',
-      hostName: hostName || 'Toplantı Yöneticisi',
-      hostBranchId,
-      hostBranchName,
-      passcode: passcode || '',
-      status: 'active',
-      createdAt: new Date().toISOString(),
-      allowScreenShare: true
-    };
+    console.warn("createOrGetMeetingRoom using resilient fallback:", error);
+    return fallbackRoom;
   }
 }
 
@@ -122,7 +121,7 @@ export function subscribeToMeetingRoom(
       callback(null);
     }
   }, (err) => {
-    console.warn("Meeting room subscription error, using local fallback:", err);
+    console.warn("Meeting room subscription warning:", err);
   });
 }
 
@@ -137,12 +136,15 @@ export async function joinMeetingParticipant(
   const pRef = doc(db, 'meetings', cleanId, 'participants', participant.id);
 
   try {
-    await setDoc(pRef, {
-      ...participant,
-      lastPing: Date.now()
-    });
+    await Promise.race([
+      setDoc(pRef, {
+        ...participant,
+        lastPing: Date.now()
+      }),
+      new Promise<void>((resolve) => setTimeout(resolve, 2000))
+    ]);
   } catch (err) {
-    console.warn("Join participant sync error:", err);
+    console.warn("Join participant sync notice:", err);
   }
 }
 
@@ -388,6 +390,24 @@ export async function sendWebRTCSignal(
   }
 }
 
+/**
+ * Purge old WebRTC signals to keep the collection lean
+ */
+export async function purgeOldWebRTCSignals(meetingId: string): Promise<void> {
+  const cleanId = (meetingId.trim() || DEFAULT_MEETING_ID).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+  const colRef = collection(db, 'meetings', cleanId, 'signals');
+  try {
+    const snap = await getDocs(colRef);
+    const expireTime = Date.now() - 30000;
+    for (const docSnap of snap.docs) {
+      const data = docSnap.data();
+      if (!data.createdAt || data.createdAt < expireTime) {
+        deleteDoc(docSnap.ref).catch(() => {});
+      }
+    }
+  } catch {}
+}
+
 export function subscribeToWebRTCSignals(
   meetingId: string,
   currentUserId: string,
@@ -395,13 +415,15 @@ export function subscribeToWebRTCSignals(
 ): () => void {
   const cleanId = (meetingId.trim() || DEFAULT_MEETING_ID).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
   const colRef = collection(db, 'meetings', cleanId, 'signals');
-  const now = Date.now() - 10000; // only recent signals
+  const startTime = Date.now() - 15000;
 
   return onSnapshot(colRef, (snap) => {
     snap.docChanges().forEach((change) => {
       if (change.type === 'added') {
         const data = change.doc.data();
-        if (data.receiverId === currentUserId && data.createdAt >= now) {
+        if (data.receiverId === currentUserId && data.createdAt >= startTime) {
+          // Once delivered to the intended receiver, delete to prevent memory build-up and duplicate delivery
+          deleteDoc(change.doc.ref).catch(() => {});
           onSignal({
             id: change.doc.id,
             senderId: data.senderId,
@@ -409,11 +431,13 @@ export function subscribeToWebRTCSignals(
             type: data.type,
             payload: data.payload
           });
+        } else if (Date.now() - (data.createdAt || 0) > 45000) {
+          deleteDoc(change.doc.ref).catch(() => {});
         }
       }
     });
   }, (err) => {
-    // Silent catch
+    console.warn("Signals subscription warning:", err);
   });
 }
 

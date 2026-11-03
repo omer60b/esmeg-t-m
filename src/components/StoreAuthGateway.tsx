@@ -363,31 +363,6 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
           </div>
         </div>
 
-        {/* Quick Zoom Meeting Join Box */}
-        <div className="mt-3.5 p-3 rounded-2xl bg-blue-950/40 dark:bg-blue-950/60 border border-blue-500/30 text-left flex items-center justify-between gap-3 shadow-lg backdrop-blur-xs">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white shrink-0 shadow">
-              <Video className="w-4 h-4" />
-            </div>
-            <div>
-              <p className="text-xs font-black text-slate-900 dark:text-white">Canlı Toplantı</p>
-              <p className="text-[10px] text-blue-600 dark:text-blue-300">Toplantı linki veya kodu ile katıl</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              const code = prompt('Toplantı Kimliğini veya Kodunu Giriniz:', 'ESME-GENEL-TOPLANTI');
-              if (code && code.trim()) {
-                window.location.search = `?meeting=${encodeURIComponent(code.trim().toUpperCase())}`;
-              }
-            }}
-            className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition cursor-pointer shadow flex items-center gap-1.5 shrink-0"
-          >
-            <span>Toplantıya Katıl</span>
-          </button>
-        </div>
-
         {/* Corporate Legal Note */}
         <p className="text-center text-[11px] opacity-60 mt-4 leading-relaxed">
           Esme AVM Bilgi İşlem ve Depo Yönetimi Koordinatörlüğü • © {new Date().getFullYear()}
