@@ -185,7 +185,41 @@ export async function leaveMeetingParticipant(
 }
 
 /**
- * Subscribe to Participants List
+ * Send Heartbeat Ping to mark participant as alive
+ */
+export async function pingParticipant(
+  meetingId: string,
+  participantId: string
+): Promise<void> {
+  const cleanId = (meetingId.trim() || DEFAULT_MEETING_ID).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+  const pRef = doc(db, 'meetings', cleanId, 'participants', participantId);
+  try {
+    await updateDoc(pRef, { lastPing: Date.now() });
+  } catch {}
+}
+
+/**
+ * Purge Stale and Test Participants from Firestore
+ */
+export async function purgeStaleAndTestParticipants(meetingId: string): Promise<void> {
+  const cleanId = (meetingId.trim() || DEFAULT_MEETING_ID).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+  const colRef = collection(db, 'meetings', cleanId, 'participants');
+  try {
+    const snap = await getDocs(colRef);
+    const now = Date.now();
+    for (const docSnap of snap.docs) {
+      const data = docSnap.data();
+      const isTest = docSnap.id.startsWith('test_') || (data.name && String(data.name).toLowerCase().includes('test'));
+      const isStale = !data.lastPing || (now - data.lastPing > 20000); // 20 saniyeden eski veya test olanları sil
+      if (isTest || isStale) {
+        deleteDoc(docSnap.ref).catch(() => {});
+      }
+    }
+  } catch {}
+}
+
+/**
+ * Subscribe to Participants List (Filters out stale users and test branches automatically)
  */
 export function subscribeToParticipants(
   meetingId: string,
@@ -194,10 +228,23 @@ export function subscribeToParticipants(
   const cleanId = (meetingId.trim() || DEFAULT_MEETING_ID).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
   const colRef = collection(db, 'meetings', cleanId, 'participants');
 
+  // Initial purge of old/stale records
+  purgeStaleAndTestParticipants(cleanId);
+
   return onSnapshot(colRef, (snap) => {
     const list: MeetingParticipant[] = [];
+    const now = Date.now();
     snap.forEach((docSnap) => {
-      list.push(docSnap.data() as MeetingParticipant);
+      const data = docSnap.data() as MeetingParticipant & { lastPing?: number };
+      const isTest = docSnap.id.startsWith('test_') || (data.name && String(data.name).toLowerCase().includes('test'));
+      const isStale = !data.lastPing || (now - data.lastPing > 20000);
+
+      if (isTest || isStale) {
+        // Oturumunu kapatmış veya test olarak eklenmiş kullanıcıyı anında temizle
+        deleteDoc(docSnap.ref).catch(() => {});
+      } else {
+        list.push(data);
+      }
     });
     callback(list);
   }, (err) => {

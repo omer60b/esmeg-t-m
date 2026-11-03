@@ -51,6 +51,8 @@ import {
   updateParticipantStatus,
   leaveMeetingParticipant,
   subscribeToParticipants,
+  pingParticipant,
+  purgeStaleAndTestParticipants,
   sendMeetingChatMessage,
   subscribeToMeetingChat,
   updateMeetingWhiteboard,
@@ -226,6 +228,9 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   useEffect(() => {
     if (!isInMeeting || !meetingCode) return;
 
+    // Purge old stale or test records when entering
+    purgeStaleAndTestParticipants(meetingCode);
+
     const unsubRoom = subscribeToMeetingRoom(meetingCode, (room) => {
       if (room) {
         setMeetingRoom(room);
@@ -247,12 +252,28 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
       }
     });
 
+    // Send active presence heartbeat every 6 seconds
+    const pingInterval = setInterval(() => {
+      pingParticipant(meetingCode, localParticipantId);
+    }, 6000);
+
+    // Auto-remove participant if browser tab is closed, refreshed, or navigated away
+    const handleUnload = () => {
+      leaveMeetingParticipant(meetingCode, localParticipantId);
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    window.addEventListener('pagehide', handleUnload);
+
     return () => {
+      clearInterval(pingInterval);
+      window.removeEventListener('beforeunload', handleUnload);
+      window.removeEventListener('pagehide', handleUnload);
+      leaveMeetingParticipant(meetingCode, localParticipantId);
       unsubRoom();
       unsubParticipants();
       unsubChat();
     };
-  }, [isInMeeting, meetingCode, activeSidePanel]);
+  }, [isInMeeting, meetingCode, activeSidePanel, localParticipantId]);
 
   // Handle Join Meeting
   const handleJoinMeeting = async () => {
@@ -480,34 +501,6 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     }
   };
 
-  // Add Test Participant Simulation (for immediate solo testing of the multi-participant Zoom experience)
-  const handleAddTestParticipant = async () => {
-    const sampleNames = [
-      { name: 'Mehmet Demir', branch: 'Kadıköy Mağazası', branchId: 11 },
-      { name: 'Ayşe Yıldırım', branch: 'Bakırköy Mağazası', branchId: 12 },
-      { name: 'Caner Özkan', branch: 'Bağcılar Mağazası', branchId: 13 },
-      { name: 'Zeynep Kaya', branch: 'Pendik Mağazası', branchId: 14 }
-    ];
-    const pick = sampleNames[Math.floor(Math.random() * sampleNames.length)];
-    const testId = 'test_' + Math.random().toString(36).substring(2, 7);
-
-    const testParticipant: MeetingParticipant = {
-      id: testId,
-      name: pick.name,
-      branchName: pick.branch,
-      branchId: pick.branchId,
-      role: 'participant',
-      isAudioMuted: Math.random() > 0.5,
-      isVideoOff: Math.random() > 0.6,
-      isHandRaised: Math.random() > 0.7,
-      isScreenSharing: false,
-      joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-      avatarColor: getAvatarColor(pick.name)
-    };
-
-    await joinMeetingParticipant(meetingCode, testParticipant);
-  };
-
   // Toggle Fullscreen
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -518,7 +511,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     }
   };
 
-  // All participants to render (local participant + remote participants from Firestore)
+  // All participants to render (real connected participants only)
   const allParticipants: MeetingParticipant[] = React.useMemo(() => {
     const finalBranch = branches.find(b => b.id === selectedBranchId) || currentBranch;
     const localP: MeetingParticipant = {
@@ -535,8 +528,12 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
       avatarColor: getAvatarColor(displayName)
     };
 
-    // Filter out duplicate local participant from Firestore list if present
-    const remotes = participants.filter(p => p.id !== localParticipantId);
+    // Only genuine live remote participants: exclude self, test records, and stale users
+    const remotes = participants.filter(p => 
+      p.id !== localParticipantId && 
+      !p.id.startsWith('test_') && 
+      !p.name.toLowerCase().includes('test')
+    );
     return [localP, ...remotes];
   }, [
     displayName, 
@@ -882,16 +879,6 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
         {/* Right: View mode & Fullscreen */}
         <div className="flex items-center gap-2">
-          {/* Quick simulation button to populate other test stores */}
-          <button
-            type="button"
-            onClick={handleAddTestParticipant}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs rounded-lg font-bold transition cursor-pointer"
-            title="Tek başınıza test ederken diğer şubeleri simüle eder"
-          >
-            <Plus className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Test Şubesi Ekle</span>
-          </button>
 
           <button
             type="button"
