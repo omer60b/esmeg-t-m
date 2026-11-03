@@ -73,6 +73,7 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
   onClickPendingBell
 }) => {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
   const branchList = propsBranches && propsBranches.length > 0 ? propsBranches : officialEsmeBranches;
   const currentBranch = branchList.find(b => b.id === currentBranchId) || branchList[0];
 
@@ -196,8 +197,8 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
             </div>
           </div>
 
-          {/* Navigation Links */}
-          <nav className="flex items-center gap-1 sm:gap-2">
+          {/* Navigation Links (Desktop) */}
+          <nav className="hidden lg:flex items-center gap-1 sm:gap-2">
             <button
               onClick={() => setActiveTab('catalog')}
               className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
@@ -275,7 +276,10 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
                 <span className="hidden lg:inline">Yönetici Paneli</span>
               </button>
             )}
+          </nav>
 
+          {/* Right Header Actions (Always visible on mobile & desktop) */}
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {/* Global Theme Switcher (Kitap Kağıdı / Açık / Koyu) for All Pages */}
             {setAppTheme && (
               <div className="hidden xl:flex items-center bg-slate-800 p-1 rounded-lg border border-slate-700 text-xs ml-1">
@@ -317,6 +321,16 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
                 </button>
               </div>
             )}
+
+            {/* Mobile Search Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setShowMobileSearch(!showMobileSearch)}
+              className="md:hidden p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer ml-1"
+              title="Arama Yap"
+            >
+              <Search className="w-4 h-4" />
+            </button>
 
             {/* Pending Trainings Notification Bell */}
             <button
@@ -508,9 +522,34 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
                 </div>
               )}
             </div>
-          </nav>
+          </div>
         </div>
       </div>
+
+      {/* Mobile Search Dropdown Bar */}
+      {showMobileSearch && (
+        <div className="md:hidden px-4 py-2.5 bg-slate-950/95 border-b border-slate-800 animate-in slide-in-from-top-2 duration-150">
+          <div className="relative w-full">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              autoFocus
+              placeholder="Yönerge, madde, şase no, EFT no ara..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-400 rounded-xl pl-9 pr-8 py-2 focus:ring-1 focus:ring-red-500"
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')} 
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* IN-APP STORE PASSWORD CHANGE MODAL */}
       {showStorePasswordModal && currentBranch && (
@@ -778,6 +817,79 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
           </div>
         </div>
       )}
+      {/* FIXED MOBILE BOTTOM NAVIGATION BAR FOR PHONES */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 shadow-[0_-4px_25px_rgba(0,0,0,0.5)] px-2 py-1 flex items-center justify-around safe-area-pb">
+        <button
+          type="button"
+          onClick={() => setActiveTab('catalog')}
+          className={`flex flex-col items-center justify-center py-1 flex-1 transition cursor-pointer ${
+            activeTab === 'catalog' ? 'text-red-500 font-extrabold' : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <GraduationCap className={`w-5 h-5 ${activeTab === 'catalog' ? 'text-red-500 scale-110' : ''} transition-transform`} />
+          <span className="text-[10px] mt-0.5 font-medium">Eğitimler</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('ebook')}
+          className={`flex flex-col items-center justify-center py-1 flex-1 transition cursor-pointer ${
+            activeTab === 'ebook' ? 'text-amber-400 font-extrabold' : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <BookOpen className={`w-5 h-5 ${activeTab === 'ebook' ? 'text-amber-400 scale-110' : ''} transition-transform`} />
+          <span className="text-[10px] mt-0.5 font-medium">E-Kitap</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('video')}
+          className={`flex flex-col items-center justify-center py-1 flex-1 transition cursor-pointer ${
+            activeTab === 'video' ? 'text-sky-400 font-extrabold' : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Video className={`w-5 h-5 ${activeTab === 'video' ? 'text-sky-400 scale-110' : ''} transition-transform`} />
+          <span className="text-[10px] mt-0.5 font-medium">Videolar</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('meeting')}
+          className={`flex flex-col items-center justify-center py-1 flex-1 transition cursor-pointer relative ${
+            activeTab === 'meeting' ? 'text-blue-400 font-extrabold' : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <div className="relative">
+            <Video className={`w-5 h-5 ${activeTab === 'meeting' ? 'text-blue-400 scale-110' : 'text-emerald-400'} transition-transform`} />
+            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+          </div>
+          <span className="text-[10px] mt-0.5 font-medium">Toplantı</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('leaderboard')}
+          className={`flex flex-col items-center justify-center py-1 flex-1 transition cursor-pointer ${
+            activeTab === 'leaderboard' ? 'text-amber-400 font-extrabold' : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Trophy className={`w-5 h-5 ${activeTab === 'leaderboard' ? 'text-amber-400 scale-110' : ''} transition-transform`} />
+          <span className="text-[10px] mt-0.5 font-medium">Sıralama</span>
+        </button>
+
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('admin')}
+            className={`flex flex-col items-center justify-center py-1 flex-1 transition cursor-pointer ${
+              activeTab === 'admin' ? 'text-red-400 font-extrabold' : 'text-amber-400 hover:text-amber-300'
+            }`}
+          >
+            <Settings className={`w-5 h-5 ${activeTab === 'admin' ? 'text-red-400 scale-110' : ''} transition-transform`} />
+            <span className="text-[10px] mt-0.5 font-medium">Yönetici</span>
+          </button>
+        )}
+      </nav>
     </header>
   );
 };

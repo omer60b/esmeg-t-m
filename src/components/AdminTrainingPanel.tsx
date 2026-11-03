@@ -6,7 +6,8 @@ import {
   TrainingCompletion,
   TrainingChapter,
   TrainingQuizQuestion,
-  Branch
+  Branch,
+  MeetingAttendanceRecord
 } from '../types';
 import { officialEsmeBranches } from '../mockData';
 import { syncAdminAccountsToFirestore } from '../services/trainingStorage';
@@ -18,6 +19,7 @@ import {
   resetAllBranchPasswords, 
   resetBranchesToDefault 
 } from '../services/branchStorage';
+import { subscribeToAttendanceLogs, clearAllAttendanceLogs } from '../services/meetingService';
 import { 
   Settings, 
   Plus, 
@@ -51,7 +53,12 @@ import {
   MapPin,
   Store,
   Youtube,
-  ExternalLink
+  ExternalLink,
+  Smartphone,
+  Laptop,
+  Radio,
+  Clock,
+  Calendar
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -106,10 +113,24 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
   onResetBranchPasswords,
   onResetBranchesToDefault
 }) => {
-  const [activeAdminTab, setActiveAdminTab] = useState<'trainings' | 'reports' | 'admins' | 'branches'>('trainings');
+  const [activeAdminTab, setActiveAdminTab] = useState<'trainings' | 'reports' | 'meeting_reports' | 'admins' | 'branches'>('trainings');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTraining, setEditingTraining] = useState<TrainingDocument | null>(null);
   const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Meeting Attendance Reporting State
+  const [attendanceLogs, setAttendanceLogs] = useState<MeetingAttendanceRecord[]>([]);
+  const [attendanceSearch, setAttendanceSearch] = useState('');
+  const [attendanceMeetingFilter, setAttendanceMeetingFilter] = useState('all');
+  const [attendanceBranchFilter, setAttendanceBranchFilter] = useState('all');
+  const [attendanceDeviceFilter, setAttendanceDeviceFilter] = useState<'all' | 'Mobil' | 'Masaüstü' | 'Tablet'>('all');
+
+  useEffect(() => {
+    const unsub = subscribeToAttendanceLogs((logs) => {
+      setAttendanceLogs(logs);
+    });
+    return () => unsub();
+  }, []);
 
   // In-app confirmation modal (replaces native browser confirm() which is blocked in iframes)
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -798,6 +819,72 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     showNotice('Başarı raporu Excel (.xlsx) olarak indirildi.');
   };
 
+  // Filtered Attendance Logs for Manager Reporting
+  const filteredAttendanceLogs = React.useMemo(() => {
+    return attendanceLogs.filter(r => {
+      if (attendanceMeetingFilter !== 'all' && r.meetingId !== attendanceMeetingFilter) return false;
+      if (attendanceBranchFilter !== 'all' && String(r.branchId) !== attendanceBranchFilter) return false;
+      if (attendanceDeviceFilter !== 'all' && r.deviceType !== attendanceDeviceFilter) return false;
+      if (attendanceSearch.trim()) {
+        const q = attendanceSearch.toLowerCase();
+        const matchName = r.participantName?.toLowerCase().includes(q);
+        const matchBranch = r.branchName?.toLowerCase().includes(q);
+        const matchMeeting = r.meetingId?.toLowerCase().includes(q);
+        if (!matchName && !matchBranch && !matchMeeting) return false;
+      }
+      return true;
+    });
+  }, [attendanceLogs, attendanceMeetingFilter, attendanceBranchFilter, attendanceDeviceFilter, attendanceSearch]);
+
+  const distinctMeetingIds = React.useMemo(() => {
+    return Array.from(new Set(attendanceLogs.map(r => r.meetingId).filter(Boolean)));
+  }, [attendanceLogs]);
+
+  // Export Attendance Logs to Excel (.xlsx)
+  const handleExportAttendanceExcel = () => {
+    if (filteredAttendanceLogs.length === 0) {
+      showNotice('Dışa aktarılacak toplantı katılım kaydı bulunamadı.', 'error');
+      return;
+    }
+    const rows = filteredAttendanceLogs.map(r => ({
+      'Toplantı Kodu': r.meetingId,
+      'Toplantı Konusu': r.meetingTitle || 'ESME Canlı Toplantı Odası',
+      'Katılımcı Personel': r.participantName,
+      'Şube / Mağaza': r.branchName,
+      'Rol / Yetki': r.role === 'host' ? 'Toplantı Yöneticisi' : 'Katılımcı',
+      'Cihaz Türü': r.deviceType,
+      'Giriş Saati': new Date(r.joinedAt).toLocaleString('tr-TR'),
+      'Çıkış Saati': r.leftAt ? new Date(r.leftAt).toLocaleString('tr-TR') : 'Halen Odada / Canlı',
+      'Katılım Süresi (Dakika)': r.durationMinutes || (r.status === 'active' ? 'Devam Ediyor' : 1),
+      'Durum': r.status === 'active' ? 'Canlı / Aktif' : 'Ayrıldı / Tamamlandı'
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Toplanti_Katilim_Raporu');
+    XLSX.writeFile(workbook, `ESME_Toplanti_Katilim_Raporu_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    showNotice('Toplantı katılım raporu Excel olarak başarıyla indirildi!');
+  };
+
+  // Clear Attendance Logs (Admin action)
+  const handleClearAttendanceLogs = () => {
+    if (attendanceLogs.length === 0) {
+      showNotice('Temizlenecek toplantı katılım kaydı bulunmamaktadır.', 'error');
+      return;
+    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Toplantı Katılım Kayıtlarını Temizle',
+      message: 'Tüm geçmiş toplantı katılım ve kullanıcı giriş raporlarını sistemden temizlemek istediğinize emin misiniz?',
+      confirmLabel: 'Evet, Raporları Temizle',
+      onConfirm: async () => {
+        await clearAllAttendanceLogs();
+        setAttendanceLogs([]);
+        showNotice('Toplantı katılım raporları başarıyla temizlendi.');
+      }
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Status Toast Banner */}
@@ -880,6 +967,21 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
         >
           <Award className="w-4 h-4 text-emerald-500" />
           Şube Başarı Raporları ({completions.length} Onay)
+        </button>
+
+        <button
+          onClick={() => setActiveAdminTab('meeting_reports')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+            activeAdminTab === 'meeting_reports'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <div className="relative">
+            <Video className="w-4 h-4 text-emerald-400" />
+            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+          </div>
+          <span>Toplantı Katılım & Giriş Raporları ({attendanceLogs.length})</span>
         </button>
 
         <button
@@ -1146,6 +1248,260 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
             </div>
           </div>
 
+        </div>
+      )}
+
+      {/* TAB: MEETING ATTENDANCE & USER LOGIN REPORTS */}
+      {activeAdminTab === 'meeting_reports' && (
+        <div className="space-y-6">
+          {/* Header Action Bar */}
+          <div className="bg-gradient-to-r from-blue-950 via-slate-900 to-indigo-950 text-white p-5 sm:p-6 rounded-3xl border border-blue-800/40 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-bold mb-2 border border-blue-500/30">
+                <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                <span>Canlı & Geçmiş Toplantı Kayıtları</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black tracking-tight">
+                Toplantı Katılım & Kullanıcı Giriş Raporları
+              </h3>
+              <p className="text-xs text-slate-300 max-w-2xl mt-1 leading-relaxed">
+                Toplantılara katılan personellerin şubeleri, giriş-çıkış saatleri, katılım süreleri ve cihaz türleri (Mobil/Masaüstü) burada raporlanır. İstediğiniz zaman Excel (.xlsx) formatında indirebilirsiniz.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {attendanceLogs.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAttendanceLogs}
+                  className="px-3.5 py-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 hover:text-white border border-rose-800 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Tüm toplantı katılım kayıtlarını temizle"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Kayıtları Temizle</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleExportAttendanceExcel}
+                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-900/30 transition cursor-pointer"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Excel Olarak İndir (.xlsx)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* KPI Summary Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider block">Toplam Katılım</span>
+              <p className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">
+                {filteredAttendanceLogs.length}
+              </p>
+              <span className="text-[10px] text-slate-400 font-medium">Tüm oturumlar</span>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider block">Canlı / Aktif</span>
+              <p className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
+                {filteredAttendanceLogs.filter(r => r.status === 'active').length}
+              </p>
+              <span className="text-[10px] text-slate-400 font-medium">Şu an odada olanlar</span>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+              <span className="text-[11px] text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wider block">Mobil Girişler</span>
+              <p className="text-2xl sm:text-3xl font-black text-blue-600 dark:text-blue-400 mt-1">
+                {filteredAttendanceLogs.filter(r => r.deviceType === 'Mobil').length}
+              </p>
+              <span className="text-[10px] text-slate-400 font-medium">Telefondan katılanlar</span>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+              <span className="text-[11px] text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider block">Katılan Şubeler</span>
+              <p className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400 mt-1">
+                {new Set(filteredAttendanceLogs.map(r => r.branchId)).size}
+              </p>
+              <span className="text-[10px] text-slate-400 font-medium">Farklı mağaza</span>
+            </div>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-xs">
+            {/* Search Box */}
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Personel adı, mağaza adı veya toplantı kodu ara..."
+                value={attendanceSearch}
+                onChange={(e) => setAttendanceSearch(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs rounded-xl pl-9 pr-3 py-2 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Meeting Filter Dropdown */}
+            <select
+              value={attendanceMeetingFilter}
+              onChange={(e) => setAttendanceMeetingFilter(e.target.value)}
+              className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-200 rounded-xl px-3 py-2 focus:ring-1 focus:ring-blue-500 cursor-pointer"
+            >
+              <option value="all">Tüm Toplantılar ({distinctMeetingIds.length})</option>
+              {distinctMeetingIds.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+
+            {/* Branch Filter Dropdown */}
+            <select
+              value={attendanceBranchFilter}
+              onChange={(e) => setAttendanceBranchFilter(e.target.value)}
+              className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-200 rounded-xl px-3 py-2 focus:ring-1 focus:ring-blue-500 cursor-pointer"
+            >
+              <option value="all">Tüm Şubeler</option>
+              {localBranches.map(b => (
+                <option key={b.id} value={String(b.id)}>{b.name}</option>
+              ))}
+            </select>
+
+            {/* Device Filter */}
+            <select
+              value={attendanceDeviceFilter}
+              onChange={(e) => setAttendanceDeviceFilter(e.target.value as any)}
+              className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-200 rounded-xl px-3 py-2 focus:ring-1 focus:ring-blue-500 cursor-pointer"
+            >
+              <option value="all">Tüm Cihazlar</option>
+              <option value="Mobil">Mobil (Telefon)</option>
+              <option value="Masaüstü">Masaüstü (Bilgisayar)</option>
+              <option value="Tablet">Tablet</option>
+            </select>
+          </div>
+
+          {/* Attendance Records Table */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-700">
+                  <tr>
+                    <th className="p-3.5">Toplantı Kodu</th>
+                    <th className="p-3.5">Katılımcı Personel</th>
+                    <th className="p-3.5">Şube / Mağaza</th>
+                    <th className="p-3.5">Yetki / Rol</th>
+                    <th className="p-3.5">Cihaz Türü</th>
+                    <th className="p-3.5">Giriş Saati</th>
+                    <th className="p-3.5">Çıkış Saati</th>
+                    <th className="p-3.5">Katılım Süresi</th>
+                    <th className="p-3.5 text-right">Durum</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {filteredAttendanceLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="p-12 text-center text-slate-400">
+                        <Video className="w-10 h-10 mx-auto mb-2 opacity-30 text-slate-500" />
+                        <p className="font-bold text-sm text-slate-300">Henüz kayıtlı toplantı katılımı bulunmuyor</p>
+                        <p className="text-xs text-slate-500 mt-1">Kullanıcılar canlı toplantıya girdiğinde otomatik olarak bu tabloda listelenecektir.</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredAttendanceLogs.map((log) => {
+                      const isMobile = log.deviceType === 'Mobil';
+                      const isActive = log.status === 'active';
+
+                      return (
+                        <tr key={log.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
+                          <td className="p-3.5">
+                            <span className="font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 px-2 py-0.5 rounded-md">
+                              {log.meetingId}
+                            </span>
+                            <span className="block text-[10px] text-slate-400 mt-0.5 truncate max-w-[150px]">
+                              {log.meetingTitle || 'Eğitim Toplantısı'}
+                            </span>
+                          </td>
+                          <td className="p-3.5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 border border-slate-600 flex items-center justify-center text-white text-[10px] font-black shrink-0">
+                                {log.participantName.charAt(0) || 'P'}
+                              </div>
+                              <span className="font-bold text-slate-900 dark:text-white">
+                                {log.participantName}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="p-3.5">
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">
+                              {log.branchName}
+                            </span>
+                          </td>
+                          <td className="p-3.5">
+                            {log.role === 'host' ? (
+                              <span className="text-[10px] bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-800 px-2 py-0.5 rounded-full font-bold">
+                                Yönetici
+                              </span>
+                            ) : (
+                              <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-full font-medium">
+                                Katılımcı
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3.5">
+                            <span className={`text-[11px] font-semibold flex items-center gap-1.5 ${
+                              isMobile ? 'text-amber-500' : 'text-slate-600 dark:text-slate-300'
+                            }`}>
+                              {isMobile ? <Smartphone className="w-3.5 h-3.5" /> : <Laptop className="w-3.5 h-3.5" />}
+                              <span>{log.deviceType}</span>
+                            </span>
+                          </td>
+                          <td className="p-3.5 font-mono text-slate-600 dark:text-slate-300">
+                            {new Date(log.joinedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            <span className="block text-[10px] text-slate-400">
+                              {new Date(log.joinedAt).toLocaleDateString('tr-TR')}
+                            </span>
+                          </td>
+                          <td className="p-3.5 font-mono">
+                            {log.leftAt ? (
+                              <div>
+                                <span className="text-slate-600 dark:text-slate-300">
+                                  {new Date(log.leftAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                <span className="block text-[10px] text-slate-400">
+                                  {new Date(log.leftAt).toLocaleDateString('tr-TR')}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-emerald-500 font-bold flex items-center gap-1 text-[11px]">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                                Halen Odada
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3.5">
+                            <span className="font-bold text-slate-900 dark:text-white">
+                              {log.durationMinutes ? `${log.durationMinutes} Dk` : (isActive ? 'Devam Ediyor' : '< 1 Dk')}
+                            </span>
+                          </td>
+                          <td className="p-3.5 text-right">
+                            {isActive ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold animate-pulse">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                Canlı
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[10px] font-medium">
+                                Ayrıldı
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 

@@ -56,7 +56,10 @@ import {
   sendMeetingChatMessage,
   subscribeToMeetingChat,
   updateMeetingWhiteboard,
-  endMeetingForAll
+  endMeetingForAll,
+  setAllParticipantsAudioMuted,
+  recordAttendanceLog,
+  updateAttendanceLogOnLeave
 } from '../services/meetingService';
 
 interface ZoomMeetingRoomProps {
@@ -125,6 +128,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   // Active Speaker & Audio Level (Web Audio API)
   const [localAudioLevel, setLocalAudioLevel] = useState(0);
   const [activeSpeakerId, setActiveSpeakerId] = useState<string>('local');
+  const [autoSpeakerSwitch, setAutoSpeakerSwitch] = useState<boolean>(true);
 
   // Media Stream references
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -146,6 +150,10 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   const localParticipantId = useRef<string>(
     'p_' + Math.random().toString(36).substring(2, 9)
   ).current;
+
+  // Attendance log reference for manager reporting
+  const attendanceLogIdRef = useRef<string | null>(null);
+  const attendanceJoinedAtRef = useRef<string>(new Date().toISOString());
 
   // Initialize camera and microphone in Lobby
   const initLocalMedia = useCallback(async () => {
@@ -212,6 +220,9 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     initLocalMedia();
 
     return () => {
+      if (attendanceLogIdRef.current) {
+        updateAttendanceLogOnLeave(attendanceLogIdRef.current, attendanceJoinedAtRef.current).catch(() => {});
+      }
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(t => t.stop());
       }
@@ -243,6 +254,21 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
     const unsubParticipants = subscribeToParticipants(meetingCode, (list) => {
       setParticipants(list);
+      // Synchronize hardware mic if host muted or unmuted me remotely
+      const myDoc = list.find(p => p.id === localParticipantId);
+      if (myDoc && typeof myDoc.isAudioMuted === 'boolean') {
+        setIsAudioMuted((prev) => {
+          if (prev !== myDoc.isAudioMuted) {
+            if (localStreamRef.current) {
+              localStreamRef.current.getAudioTracks().forEach(t => {
+                t.enabled = !myDoc.isAudioMuted;
+              });
+            }
+            return myDoc.isAudioMuted;
+          }
+          return prev;
+        });
+      }
     });
 
     const unsubChat = subscribeToMeetingChat(meetingCode, (messages) => {
@@ -309,6 +335,16 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     await joinMeetingParticipant(cleanCode, participant);
     setIsInMeeting(true);
 
+    // Record attendance log for manager reporting
+    try {
+      const nowIso = new Date().toISOString();
+      attendanceJoinedAtRef.current = nowIso;
+      const logId = await recordAttendanceLog(cleanCode, participant, room.title);
+      attendanceLogIdRef.current = logId;
+    } catch (attErr) {
+      console.warn("Attendance log record error:", attErr);
+    }
+
     // Re-bind local video element if stream active
     setTimeout(() => {
       if (localVideoRef.current && localStreamRef.current) {
@@ -320,6 +356,12 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
   // Handle Leave Meeting
   const handleLeaveMeeting = async () => {
+    // Complete attendance record
+    if (attendanceLogIdRef.current) {
+      await updateAttendanceLogOnLeave(attendanceLogIdRef.current, attendanceJoinedAtRef.current);
+      attendanceLogIdRef.current = null;
+    }
+
     if (meetingCode && localParticipantId) {
       await leaveMeetingParticipant(meetingCode, localParticipantId);
     }
@@ -491,24 +533,34 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     setChatInputText('');
   };
 
-  // Mute All Participants (Host Only)
+  // Host / Admin: Mute All Participants
   const handleMuteAll = async () => {
-    if (!confirm('Tüm katılımcıların mikrofonunu sessize almak istiyor musunuz?')) return;
-    for (const p of participants) {
-      if (p.id !== localParticipantId) {
-        await updateParticipantStatus(meetingCode, p.id, { isAudioMuted: true });
-      }
+    if (!isAdmin && meetingRoom?.hostName !== displayName) return;
+    await setAllParticipantsAudioMuted(meetingCode, true);
+    setIsAudioMuted(true);
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(t => t.enabled = false);
     }
   };
 
-  // Toggle Fullscreen
-  const toggleFullscreen = () => {
-    if (!containerRef.current) return;
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
-    } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+  // Host / Admin: Unmute All Participants
+  const handleUnmuteAll = async () => {
+    if (!isAdmin && meetingRoom?.hostName !== displayName) return;
+    await setAllParticipantsAudioMuted(meetingCode, false);
+    setIsAudioMuted(false);
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(t => t.enabled = true);
     }
+  };
+
+  // Host / Admin: Toggle single participant's audio
+  const handleToggleParticipantMute = async (targetId: string, currentMuted: boolean) => {
+    if (!isAdmin && meetingRoom?.hostName !== displayName) return;
+    if (targetId === localParticipantId) {
+      toggleAudio();
+      return;
+    }
+    await updateParticipantStatus(meetingCode, targetId, { isAudioMuted: !currentMuted });
   };
 
   // All participants to render (real connected participants only)
@@ -550,13 +602,46 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     participants
   ]);
 
-  // Grid columns calculator for video stage
+  // Active Featured Speaker for Speaker Mode (Tek Ekran Görünümü)
+  const featuredSpeaker = React.useMemo(() => {
+    if (isPinned) {
+      const p = allParticipants.find(item => item.id === isPinned);
+      if (p) return p;
+    }
+    if (activeSpeakerId) {
+      const p = allParticipants.find(item => item.id === activeSpeakerId);
+      if (p) return p;
+    }
+    return allParticipants.find(p => !p.isAudioMuted) || allParticipants[0] || null;
+  }, [isPinned, activeSpeakerId, allParticipants]);
+
+  // Toggle Fullscreen
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+    }
+  };
+
+  // Grid columns calculator for video stage - maintains 16:9 aspect ratio and stable boxes as users join
   const getGridClass = (count: number) => {
-    if (count === 1) return 'grid-cols-1 max-w-4xl mx-auto';
-    if (count === 2) return 'grid-cols-1 md:grid-cols-2';
-    if (count <= 4) return 'grid-cols-2';
-    if (count <= 6) return 'grid-cols-2 lg:grid-cols-3';
-    return 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
+    if (count <= 1) return 'grid-cols-1 max-w-4xl w-full mx-auto';
+    if (count === 2) return 'grid-cols-1 sm:grid-cols-2 max-w-5xl w-full mx-auto';
+    if (count <= 4) return 'grid-cols-1 sm:grid-cols-2 max-w-5xl w-full mx-auto';
+    if (count <= 6) return 'grid-cols-2 lg:grid-cols-3 max-w-6xl w-full mx-auto';
+    if (count <= 9) return 'grid-cols-2 sm:grid-cols-3 md:grid-cols-3 max-w-6xl w-full mx-auto';
+    return 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 max-w-7xl w-full mx-auto';
+  };
+
+  const getTileMaxHeight = (count: number) => {
+    if (count <= 1) return 'max-h-[66vh]';
+    if (count <= 2) return 'max-h-[58vh]';
+    if (count <= 4) return 'max-h-[36vh]';
+    if (count <= 6) return 'max-h-[29vh]';
+    if (count <= 9) return 'max-h-[24vh]';
+    return 'max-h-[20vh]';
   };
 
   // =========================================================================
@@ -564,8 +649,8 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   // =========================================================================
   if (!isInMeeting) {
     return (
-      <div className="min-h-[82vh] flex items-center justify-center p-3 sm:p-6 bg-slate-950 text-slate-100 font-sans">
-        <div className="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden p-6 sm:p-8 flex flex-col md:flex-row gap-8 items-center">
+      <div className="min-h-[82vh] flex items-center justify-center p-2.5 sm:p-6 bg-slate-950 text-slate-100 font-sans">
+        <div className="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden p-4 sm:p-8 flex flex-col md:flex-row gap-6 sm:gap-8 items-center">
           
           {/* Left: Camera & Microphone Preview Tile */}
           <div className="w-full md:w-1/2 flex flex-col items-center">
@@ -1052,104 +1137,264 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
                 }}
               />
             </div>
-          ) : (
-            /* STANDARD ZOOM VIDEO GRID */
-            <div className={`w-full h-full grid gap-3 items-center justify-center ${getGridClass(allParticipants.length)}`}>
-              {allParticipants.map((p) => {
-                const isLocal = p.id === localParticipantId;
-                const isSpeaking = (isLocal && localAudioLevel > 20 && !isAudioMuted) || (!isLocal && !p.isAudioMuted && Math.random() > 0.8);
-                const isVideoOffState = isLocal ? isVideoOff : p.isVideoOff;
-                const isAudioMutedState = isLocal ? isAudioMuted : p.isAudioMuted;
+          ) : viewMode === 'speaker' && featuredSpeaker ? (
+            /* ============================================================== */
+            /* VIEW MODE: SPEAKER / SPOTLIGHT (TEK EKRAN HALİNDE KONUŞMACI)   */
+            /* ============================================================== */
+            <div className="w-full h-full flex flex-col items-center justify-between overflow-hidden">
+              
+              {/* Top Filmstrip of Participants (Thumbnails) */}
+              <div className="w-full flex items-center justify-start gap-2.5 overflow-x-auto py-1 px-1 bg-black/40 backdrop-blur-md rounded-2xl mb-2 border border-white/5 shrink-0 scrollbar-thin">
+                {allParticipants.map((p) => {
+                  const isLocal = p.id === localParticipantId;
+                  const isSpeaking = (isLocal && localAudioLevel > 20 && !isAudioMuted) || (!isLocal && !p.isAudioMuted);
+                  const isSelected = featuredSpeaker?.id === p.id;
+                  const isAudioMutedState = isLocal ? isAudioMuted : p.isAudioMuted;
 
-                return (
-                  <div
-                    key={p.id}
-                    className={`relative w-full aspect-video bg-[#242424] rounded-2xl overflow-hidden border transition-all duration-200 flex items-center justify-center group ${
-                      isSpeaking 
-                        ? 'border-emerald-500 ring-2 ring-emerald-500/80 shadow-[0_0_20px_rgba(16,185,129,0.3)]' 
-                        : isPinned === p.id 
-                        ? 'border-blue-500 ring-2 ring-blue-500' 
-                        : 'border-white/5 hover:border-white/20'
-                    }`}
-                  >
-                    {/* Live Video element for local user */}
-                    {isLocal && (
-                      <video
-                        ref={localVideoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        className={`w-full h-full object-cover transform -scale-x-100 ${
-                          isVideoOffState ? 'hidden' : 'block'
-                        } ${isVirtualBlur ? 'blur-sm' : ''}`}
-                      />
-                    )}
-
-                    {/* Camera Off Avatar Screen (Authentic Zoom Style) */}
-                    {(isVideoOffState || (!isLocal && p.isVideoOff)) && (
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        <div className={`w-20 sm:w-24 h-20 sm:h-24 rounded-full bg-gradient-to-br ${p.avatarColor || getAvatarColor(p.name)} flex items-center justify-center text-white text-2xl sm:text-3xl font-black shadow-xl ring-4 ring-black/40`}>
-                          {getInitials(p.name)}
-                        </div>
-                        <span className="text-xs font-semibold text-slate-300">{p.name}</span>
-                      </div>
-                    )}
-
-                    {/* Simulated live camera tile for remote participants who have camera on */}
-                    {!isLocal && !p.isVideoOff && (
-                      <div className="w-full h-full relative bg-slate-900 flex items-center justify-center overflow-hidden">
-                        <div className={`w-24 h-24 rounded-full bg-gradient-to-br ${p.avatarColor || getAvatarColor(p.name)} flex items-center justify-center text-white text-3xl font-black animate-pulse opacity-80`}>
-                          {getInitials(p.name)}
-                        </div>
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
-                      </div>
-                    )}
-
-                    {/* Hand Raised Badge (Zoom ✋) */}
-                    {p.isHandRaised && (
-                      <div className="absolute top-3 left-3 bg-amber-500 text-slate-950 px-2 py-1 rounded-lg text-xs font-extrabold flex items-center gap-1.5 shadow-lg animate-bounce">
-                        <Hand className="w-3.5 h-3.5 fill-current" />
-                        <span>El Kaldırdı</span>
-                      </div>
-                    )}
-
-                    {/* Pin button */}
-                    <button
-                      type="button"
-                      onClick={() => setIsPinned(isPinned === p.id ? null : p.id)}
-                      className="absolute top-3 right-3 p-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white opacity-0 group-hover:opacity-100 transition cursor-pointer"
-                      title={isPinned === p.id ? 'Sabitlemeyi Kaldır' : 'Sabitle'}
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => setIsPinned(p.id)}
+                      className={`relative w-32 sm:w-40 aspect-video rounded-xl overflow-hidden shrink-0 cursor-pointer border transition-all duration-200 bg-[#222] flex items-center justify-center ${
+                        isSelected 
+                          ? 'border-blue-500 ring-2 ring-blue-500 shadow-md' 
+                          : isSpeaking 
+                          ? 'border-emerald-500 ring-2 ring-emerald-500' 
+                          : 'border-white/10 hover:border-white/30'
+                      }`}
+                      title={`${p.name} (${p.branchName}) — Tıkla ve Tek Ekrana Sabitle`}
                     >
-                      <Pin className={`w-3.5 h-3.5 ${isPinned === p.id ? 'text-blue-400 fill-current' : 'text-slate-300'}`} />
-                    </button>
+                      <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${p.avatarColor || getAvatarColor(p.name)} flex items-center justify-center text-white text-xs font-black shadow`}>
+                        {getInitials(p.name)}
+                      </div>
 
-                    {/* Bottom-left Name Tag with Audio status */}
-                    <div className="absolute bottom-2.5 left-2.5 flex items-center gap-2 bg-black/70 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10 text-xs">
-                      {isAudioMutedState ? (
-                        <div className="w-4 h-4 rounded-full bg-rose-600 flex items-center justify-center text-white">
-                          <MicOff className="w-2.5 h-2.5" />
-                        </div>
-                      ) : (
-                        <div className="w-4 h-4 rounded-full bg-emerald-600 flex items-center justify-center text-white">
-                          <Mic className="w-2.5 h-2.5" />
-                        </div>
-                      )}
-                      <span className="font-bold text-white max-w-[130px] sm:max-w-[200px] truncate">
-                        {p.name}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-normal">
-                        ({p.branchName})
-                      </span>
-                      {p.role === 'host' && (
-                        <span className="text-[9px] bg-blue-600 text-white font-extrabold px-1.5 py-0.2 rounded">
-                          Ev Sahibi
-                        </span>
-                      )}
+                      {/* Small badge */}
+                      <div className="absolute bottom-1 left-1 right-1 flex items-center justify-between bg-black/80 px-1.5 py-0.5 rounded text-[10px] text-white">
+                        <span className="truncate max-w-[80px] font-semibold">{p.name}</span>
+                        {isAudioMutedState ? (
+                          <MicOff className="w-2.5 h-2.5 text-rose-400 shrink-0" />
+                        ) : (
+                          <Mic className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
+                        )}
+                      </div>
                     </div>
+                  );
+                })}
+              </div>
 
+              {/* Main Featured Big Screen (Tek Ekran) */}
+              <div className="flex-1 w-full max-w-5xl aspect-video rounded-3xl overflow-hidden relative border border-white/10 shadow-2xl flex items-center justify-center bg-[#1c1c1c] group">
+                
+                {/* Local user on big screen */}
+                {featuredSpeaker.id === localParticipantId ? (
+                  <video
+                    ref={localVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className={`w-full h-full object-cover transform -scale-x-100 ${
+                      isVideoOff ? 'hidden' : 'block'
+                    } ${isVirtualBlur ? 'blur-sm' : ''}`}
+                  />
+                ) : null}
+
+                {/* Camera off or Remote Avatar on big screen */}
+                {(featuredSpeaker.id !== localParticipantId || isVideoOff) && (
+                  <div className="flex flex-col items-center justify-center gap-4">
+                    <div className={`w-28 sm:w-36 h-28 sm:h-36 rounded-full bg-gradient-to-br ${featuredSpeaker.avatarColor || getAvatarColor(featuredSpeaker.name)} flex items-center justify-center text-white text-4xl sm:text-5xl font-black shadow-2xl ring-8 ring-white/5`}>
+                      {getInitials(featuredSpeaker.name)}
+                    </div>
+                    <div className="text-center">
+                      <p className="text-base sm:text-lg font-black text-white">{featuredSpeaker.name}</p>
+                      <p className="text-xs text-slate-400 font-semibold">{featuredSpeaker.branchName}</p>
+                    </div>
                   </div>
-                );
-              })}
+                )}
+
+                {/* Active Speaker Glowing Border */}
+                {((featuredSpeaker.id === localParticipantId && localAudioLevel > 20 && !isAudioMuted) || 
+                  (featuredSpeaker.id !== localParticipantId && !featuredSpeaker.isAudioMuted)) && (
+                  <div className="absolute inset-0 pointer-events-none ring-4 ring-emerald-500 shadow-[0_0_40px_rgba(16,185,129,0.4)] rounded-3xl animate-pulse"></div>
+                )}
+
+                {/* Top Right: Mode Indicator & Switch to Grid */}
+                <div className="absolute top-4 right-4 flex items-center gap-2">
+                  <div className="bg-black/75 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 text-xs font-bold text-emerald-400 flex items-center gap-2 shadow-lg">
+                    <Radio className="w-3.5 h-3.5 animate-pulse" />
+                    <span>Tek Ekran (Konuşmacı Görünümü)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('grid')}
+                    className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition cursor-pointer shadow-lg flex items-center gap-1.5"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span>Galeriye Dön</span>
+                  </button>
+                </div>
+
+                {/* Hand Raised Banner on Main Screen */}
+                {featuredSpeaker.isHandRaised && (
+                  <div className="absolute top-4 left-4 bg-amber-500 text-slate-950 px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg animate-bounce">
+                    <Hand className="w-4 h-4 fill-current" />
+                    <span>Söz İstiyor (El Kaldırdı)</span>
+                  </div>
+                )}
+
+                {/* Bottom Left: Regular Elegant Glassmorphism Name Tag */}
+                <div className="absolute bottom-4 left-4 flex items-center gap-2.5 bg-slate-950/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/15 text-xs shadow-2xl select-none">
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                    featuredSpeaker.isAudioMuted ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white'
+                  }`}>
+                    {featuredSpeaker.isAudioMuted ? <MicOff className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
+                  </div>
+                  <span className="font-extrabold text-white text-sm sm:text-base tracking-tight">
+                    {featuredSpeaker.name}
+                  </span>
+                  <span className="text-xs text-slate-300 font-medium">
+                    • {featuredSpeaker.branchName}
+                  </span>
+                  {featuredSpeaker.role === 'host' && (
+                    <span className="text-[10px] bg-blue-600 text-white font-black px-2 py-0.5 rounded-md uppercase tracking-wider">
+                      Yönetici
+                    </span>
+                  )}
+                  {((featuredSpeaker.id === localParticipantId && localAudioLevel > 20 && !isAudioMuted) || 
+                    (featuredSpeaker.id !== localParticipantId && !featuredSpeaker.isAudioMuted)) && (
+                    <span className="text-[10px] bg-emerald-500 text-slate-950 font-black px-2 py-0.5 rounded-md animate-pulse">
+                      Konuşuyor
+                    </span>
+                  )}
+                </div>
+
+              </div>
+
+            </div>
+          ) : (
+            /* ============================================================== */
+            /* VIEW MODE: BALANCED RESPONSIVE GRID (DÜZENLİ KUTUCUKLAR)       */
+            /* ============================================================== */
+            <div className="w-full h-full flex flex-col justify-center items-center">
+              
+              {/* Active Speaker Banner with 1-click switch to Single Screen */}
+              {allParticipants.length > 1 && (
+                <div className="mb-2.5 flex items-center gap-2 bg-black/60 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/10 text-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                  <span className="text-slate-300 font-medium">Canlı Konuşmacı:</span>
+                  <span className="font-extrabold text-white">
+                    {allParticipants.find(p => p.id === activeSpeakerId)?.name || featuredSpeaker?.name || displayName}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('speaker')}
+                    className="ml-2 px-2.5 py-0.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold transition cursor-pointer"
+                  >
+                    Tek Ekranda Göster
+                  </button>
+                </div>
+              )}
+
+              {/* Balanced auto-fit responsive grid */}
+              <div className={`w-full grid gap-3 items-center justify-center ${getGridClass(allParticipants.length)}`}>
+                {allParticipants.map((p) => {
+                  const isLocal = p.id === localParticipantId;
+                  const isSpeaking = (isLocal && localAudioLevel > 20 && !isAudioMuted) || (!isLocal && !p.isAudioMuted);
+                  const isVideoOffState = isLocal ? isVideoOff : p.isVideoOff;
+                  const isAudioMutedState = isLocal ? isAudioMuted : p.isAudioMuted;
+
+                  return (
+                    <div
+                      key={p.id}
+                      className={`relative w-full aspect-video bg-[#202020] rounded-2xl overflow-hidden border transition-all duration-200 flex items-center justify-center shadow-lg group ${
+                        isSpeaking 
+                          ? 'border-emerald-500 ring-4 ring-emerald-500/80 shadow-[0_0_25px_rgba(16,185,129,0.4)]' 
+                          : isPinned === p.id 
+                          ? 'border-blue-500 ring-2 ring-blue-500' 
+                          : 'border-white/10 hover:border-white/25'
+                      }`}
+                    >
+                      {/* Live Video element for local user */}
+                      {isLocal && (
+                        <video
+                          ref={localVideoRef}
+                          autoPlay
+                          playsInline
+                          muted
+                          className={`w-full h-full object-cover transform -scale-x-100 ${
+                            isVideoOffState ? 'hidden' : 'block'
+                          } ${isVirtualBlur ? 'blur-sm' : ''}`}
+                        />
+                      )}
+
+                      {/* Camera Off Avatar Screen */}
+                      {(isVideoOffState || (!isLocal && p.isVideoOff)) && (
+                        <div className="flex flex-col items-center justify-center gap-2 select-none">
+                          <div className={`w-18 sm:w-22 h-18 sm:h-22 rounded-full bg-gradient-to-br ${p.avatarColor || getAvatarColor(p.name)} flex items-center justify-center text-white text-2xl sm:text-3xl font-black shadow-xl ring-4 ring-black/40`}>
+                            {getInitials(p.name)}
+                          </div>
+                          <span className="text-xs font-bold text-slate-200">{p.name}</span>
+                        </div>
+                      )}
+
+                      {/* Remote participant camera placeholder */}
+                      {!isLocal && !p.isVideoOff && (
+                        <div className="w-full h-full relative bg-slate-900 flex items-center justify-center overflow-hidden">
+                          <div className={`w-20 h-20 rounded-full bg-gradient-to-br ${p.avatarColor || getAvatarColor(p.name)} flex items-center justify-center text-white text-2xl font-black opacity-80`}>
+                            {getInitials(p.name)}
+                          </div>
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+                        </div>
+                      )}
+
+                      {/* Hand Raised Badge (Zoom ✋) */}
+                      {p.isHandRaised && (
+                        <div className="absolute top-3 left-3 bg-amber-500 text-slate-950 px-2.5 py-1 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-lg animate-bounce">
+                          <Hand className="w-3.5 h-3.5 fill-current" />
+                          <span>El Kaldırdı</span>
+                        </div>
+                      )}
+
+                      {/* Pin button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsPinned(isPinned === p.id ? null : p.id);
+                          setViewMode('speaker');
+                        }}
+                        className="absolute top-3 right-3 p-1.5 rounded-xl bg-black/70 hover:bg-black/90 text-white opacity-0 group-hover:opacity-100 transition cursor-pointer"
+                        title="Tek Ekranda Sabitle"
+                      >
+                        <Pin className={`w-3.5 h-3.5 ${isPinned === p.id ? 'text-blue-400 fill-current' : 'text-slate-300'}`} />
+                      </button>
+
+                      {/* Regular Clean Glassmorphic Name Tag */}
+                      <div className="absolute bottom-2.5 left-2.5 flex items-center gap-2 bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 text-xs shadow-lg max-w-[88%] select-none">
+                        <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${isAudioMutedState ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white'}`}>
+                          {isAudioMutedState ? <MicOff className="w-2.5 h-2.5" /> : <Mic className="w-2.5 h-2.5" />}
+                        </div>
+                        <span className="font-extrabold text-white text-xs sm:text-sm tracking-tight truncate">
+                          {p.name}
+                        </span>
+                        <span className="text-[10px] sm:text-xs text-slate-300 font-medium truncate hidden sm:inline">
+                          • {p.branchName}
+                        </span>
+                        {p.role === 'host' && (
+                          <span className="text-[9px] bg-blue-600 text-white font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
+                            Yönetici
+                          </span>
+                        )}
+                        {isSpeaking && (
+                          <span className="text-[9px] bg-emerald-500 text-slate-950 font-black px-1.5 py-0.5 rounded animate-pulse shrink-0">
+                            Konuşuyor
+                          </span>
+                        )}
+                      </div>
+
+                    </div>
+                  );
+                })}
+              </div>
+
             </div>
           )}
 
@@ -1181,62 +1426,86 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
             {activeSidePanel === 'participants' && (
               <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Host Control Actions */}
-                <div className="p-3 border-b border-white/5 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleMuteAll}
-                    className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <MicOff className="w-3.5 h-3.5 text-rose-400" />
-                    <span>Tümünü Sessize Al</span>
-                  </button>
+                <div className="p-3 border-b border-white/5 space-y-2">
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleMuteAll}
+                      className="flex-1 py-1.5 px-2 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                      title="Tüm katılımcıların mikrofonunu kapat"
+                    >
+                      <MicOff className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Tümünü Kapat</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleUnmuteAll}
+                      className="flex-1 py-1.5 px-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                      title="Tüm katılımcıların mikrofonunu aç"
+                    >
+                      <Mic className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Tümünü Aç</span>
+                    </button>
+                  </div>
                   <button
                     type="button"
                     onClick={copyMeetingLink}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1"
+                    className="w-full py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
                   >
                     <Share2 className="w-3.5 h-3.5" />
-                    <span>Davet Et</span>
+                    <span>Davet Bağlantısını Kopyala</span>
                   </button>
                 </div>
 
                 {/* Participants list */}
                 <div className="flex-1 overflow-y-auto divide-y divide-white/5 p-2">
-                  {allParticipants.map((p) => (
-                    <div key={p.id} className="py-2.5 px-2 flex items-center justify-between hover:bg-white/5 rounded-xl transition">
-                      <div className="flex items-center gap-2.5 overflow-hidden">
-                        <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${p.avatarColor || getAvatarColor(p.name)} flex items-center justify-center text-white text-xs font-black shrink-0`}>
-                          {getInitials(p.name)}
-                        </div>
-                        <div className="overflow-hidden">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-bold text-white truncate max-w-[140px]">{p.name}</span>
-                            {p.role === 'host' && (
-                              <span className="text-[9px] bg-blue-600/40 text-blue-300 border border-blue-500/30 px-1 rounded font-bold">
-                                Ev Sahibi
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-slate-400 truncate block">{p.branchName}</span>
-                        </div>
-                      </div>
+                  {allParticipants.map((p) => {
+                    const isLocal = p.id === localParticipantId;
+                    const isAudioMutedState = isLocal ? isAudioMuted : p.isAudioMuted;
 
-                      {/* Controls */}
-                      <div className="flex items-center gap-1.5 text-slate-400">
-                        {p.isHandRaised && <Hand className="w-3.5 h-3.5 text-amber-400 fill-current" />}
-                        {p.isAudioMuted ? (
-                          <MicOff className="w-4 h-4 text-rose-500" />
-                        ) : (
-                          <Mic className="w-4 h-4 text-emerald-400" />
-                        )}
-                        {p.isVideoOff ? (
-                          <VideoOff className="w-4 h-4 text-rose-500" />
-                        ) : (
-                          <Video className="w-4 h-4 text-sky-400" />
-                        )}
+                    return (
+                      <div key={p.id} className="py-2.5 px-2 flex items-center justify-between hover:bg-white/5 rounded-xl transition group">
+                        <div className="flex items-center gap-2.5 overflow-hidden">
+                          <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${p.avatarColor || getAvatarColor(p.name)} flex items-center justify-center text-white text-xs font-black shrink-0`}>
+                            {getInitials(p.name)}
+                          </div>
+                          <div className="overflow-hidden">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-white truncate max-w-[130px]">{p.name}</span>
+                              {p.role === 'host' && (
+                                <span className="text-[9px] bg-blue-600/40 text-blue-300 border border-blue-500/30 px-1 rounded font-bold">
+                                  Yönetici
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-slate-400 truncate block">{p.branchName}</span>
+                          </div>
+                        </div>
+
+                        {/* Controls (Host can toggle mute/unmute per participant) */}
+                        <div className="flex items-center gap-2 text-slate-400">
+                          {p.isHandRaised && <Hand className="w-3.5 h-3.5 text-amber-400 fill-current" />}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleParticipantMute(p.id, isAudioMutedState)}
+                            className="p-1 rounded-md hover:bg-white/10 text-xs transition cursor-pointer"
+                            title={isAudioMutedState ? "Mikrofonu Aç" : "Mikrofonu Kapat"}
+                          >
+                            {isAudioMutedState ? (
+                              <MicOff className="w-4 h-4 text-rose-500" />
+                            ) : (
+                              <Mic className="w-4 h-4 text-emerald-400" />
+                            )}
+                          </button>
+                          {p.isVideoOff ? (
+                            <VideoOff className="w-4 h-4 text-rose-500" />
+                          ) : (
+                            <Video className="w-4 h-4 text-sky-400" />
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

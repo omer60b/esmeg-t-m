@@ -194,5 +194,18 @@ export interface MeetingRoom {
   activeSpeakerId?: string;
 }
 
-
-
+export interface MeetingAttendanceRecord {
+  id: string;
+  meetingId: string;
+  meetingTitle?: string;
+  participantId: string;
+  participantName: string;
+  branchId: number;
+  branchName: string;
+  role: 'host' | 'co-host' | 'participant';
+  deviceType: 'Mobil' | 'Masaüstü' | 'Tablet';
+  joinedAt: string;
+  leftAt?: string;
+  durationMinutes?: number;
+  status: 'active' | 'completed';
+}

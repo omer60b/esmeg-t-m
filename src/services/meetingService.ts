@@ -13,7 +13,7 @@ import {
   limit
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebaseService';
-import { MeetingRoom, MeetingParticipant, MeetingChatMessage } from '../types';
+import { MeetingRoom, MeetingParticipant, MeetingChatMessage, MeetingAttendanceRecord } from '../types';
 
 export const DEFAULT_MEETING_ID = 'esme-genel-toplanti';
 
@@ -164,6 +164,25 @@ export async function updateParticipantStatus(
     });
   } catch (err) {
     console.warn("Update participant error:", err);
+  }
+}
+
+/**
+ * Mute or Unmute all participants in the meeting (Host/Manager action)
+ */
+export async function setAllParticipantsAudioMuted(
+  meetingId: string,
+  muted: boolean
+): Promise<void> {
+  const cleanId = (meetingId.trim() || DEFAULT_MEETING_ID).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+  const colRef = collection(db, 'meetings', cleanId, 'participants');
+  try {
+    const snap = await getDocs(colRef);
+    for (const docSnap of snap.docs) {
+      updateDoc(docSnap.ref, { isAudioMuted: muted }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn("Set all audio muted error:", err);
   }
 }
 
@@ -397,3 +416,181 @@ export function subscribeToWebRTCSignals(
     // Silent catch
   });
 }
+
+/**
+ * Detect Device Type (Mobil, Tablet, Masaüstü)
+ */
+export function detectDeviceType(): 'Mobil' | 'Tablet' | 'Masaüstü' {
+  if (typeof navigator === 'undefined') return 'Masaüstü';
+  const ua = (navigator.userAgent || '').toLowerCase();
+  if (/(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(ua)) {
+    return 'Tablet';
+  }
+  if (/mobile|iphone|ipod|blackberry|opera mini|iemobile|wpdesktop|android/i.test(ua)) {
+    return 'Mobil';
+  }
+  if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+    return 'Mobil';
+  }
+  return 'Masaüstü';
+}
+
+const ATTENDANCE_STORAGE_KEY = 'esme_meeting_attendance_logs';
+
+/**
+ * Record attendance in Firestore & localStorage when user enters a meeting
+ */
+export async function recordAttendanceLog(
+  meetingId: string,
+  participant: MeetingParticipant,
+  meetingTitle?: string
+): Promise<string> {
+  const cleanId = (meetingId.trim() || DEFAULT_MEETING_ID).toUpperCase();
+  const recordId = `att_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const now = new Date().toISOString();
+  const device = detectDeviceType();
+
+  const record: MeetingAttendanceRecord = {
+    id: recordId,
+    meetingId: cleanId,
+    meetingTitle: meetingTitle || 'ESME Canlı Eğitim Toplantısı',
+    participantId: participant.id,
+    participantName: participant.name.replace(/\s*\(Siz\)\s*$/, '').trim(),
+    branchId: participant.branchId,
+    branchName: participant.branchName,
+    role: participant.role,
+    deviceType: device,
+    joinedAt: now,
+    status: 'active'
+  };
+
+  // Local storage update
+  try {
+    const raw = localStorage.getItem(ATTENDANCE_STORAGE_KEY);
+    const list: MeetingAttendanceRecord[] = raw ? JSON.parse(raw) : [];
+    list.unshift(record);
+    localStorage.setItem(ATTENDANCE_STORAGE_KEY, JSON.stringify(list.slice(0, 500)));
+  } catch {}
+
+  // Firestore update
+  try {
+    const ref = doc(db, 'meeting_attendance_logs', recordId);
+    await setDoc(ref, record);
+  } catch (err) {
+    console.warn("Firestore record attendance log error:", err);
+  }
+
+  return recordId;
+}
+
+/**
+ * Update attendance log on exit (mark leftAt, durationMinutes, completed)
+ */
+export async function updateAttendanceLogOnLeave(
+  recordId: string,
+  joinedAtIso?: string
+): Promise<void> {
+  if (!recordId) return;
+  const now = new Date().toISOString();
+  let duration = 1;
+  if (joinedAtIso) {
+    const diffMs = Date.now() - new Date(joinedAtIso).getTime();
+    duration = Math.max(1, Math.round(diffMs / 60000));
+  }
+
+  // Update local storage
+  try {
+    const raw = localStorage.getItem(ATTENDANCE_STORAGE_KEY);
+    if (raw) {
+      const list: MeetingAttendanceRecord[] = JSON.parse(raw);
+      const idx = list.findIndex(r => r.id === recordId);
+      if (idx !== -1) {
+        list[idx].leftAt = now;
+        list[idx].durationMinutes = duration;
+        list[idx].status = 'completed';
+        localStorage.setItem(ATTENDANCE_STORAGE_KEY, JSON.stringify(list));
+      }
+    }
+  } catch {}
+
+  // Update Firestore
+  try {
+    const ref = doc(db, 'meeting_attendance_logs', recordId);
+    await updateDoc(ref, {
+      leftAt: now,
+      durationMinutes: duration,
+      status: 'completed'
+    });
+  } catch (err) {
+    console.warn("Firestore update attendance log error:", err);
+  }
+}
+
+/**
+ * Subscribe to Attendance Logs for Administrator Reporting
+ */
+export function subscribeToAttendanceLogs(
+  callback: (records: MeetingAttendanceRecord[]) => void
+): () => void {
+  // Read local storage immediately
+  try {
+    const raw = localStorage.getItem(ATTENDANCE_STORAGE_KEY);
+    if (raw) {
+      callback(JSON.parse(raw));
+    }
+  } catch {}
+
+  const colRef = collection(db, 'meeting_attendance_logs');
+  return onSnapshot(colRef, (snap) => {
+    const remoteList: MeetingAttendanceRecord[] = [];
+    snap.forEach((d) => {
+      remoteList.push({ id: d.id, ...d.data() } as MeetingAttendanceRecord);
+    });
+
+    // Sort newest first
+    remoteList.sort((a, b) => new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime());
+
+    // Merge with localStorage
+    let combined = remoteList;
+    try {
+      const raw = localStorage.getItem(ATTENDANCE_STORAGE_KEY);
+      if (raw) {
+        const localList: MeetingAttendanceRecord[] = JSON.parse(raw);
+        const map = new Map<string, MeetingAttendanceRecord>();
+        localList.forEach(r => map.set(r.id, r));
+        remoteList.forEach(r => map.set(r.id, r));
+        combined = Array.from(map.values()).sort((a, b) => 
+          new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime()
+        );
+      }
+    } catch {}
+
+    callback(combined);
+  }, (err) => {
+    console.warn("Attendance logs subscription error, using local fallback:", err);
+    try {
+      const raw = localStorage.getItem(ATTENDANCE_STORAGE_KEY);
+      if (raw) callback(JSON.parse(raw));
+    } catch {}
+  });
+}
+
+/**
+ * Clear All Attendance Logs (Admin action)
+ */
+export async function clearAllAttendanceLogs(): Promise<void> {
+  try {
+    localStorage.removeItem(ATTENDANCE_STORAGE_KEY);
+  } catch {}
+
+  try {
+    const colRef = collection(db, 'meeting_attendance_logs');
+    const snap = await getDocs(colRef);
+    for (const d of snap.docs) {
+      deleteDoc(d.ref).catch(() => {});
+    }
+  } catch (err) {
+    console.warn("Clear attendance logs error:", err);
+  }
+}
+
