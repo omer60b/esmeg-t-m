@@ -156,5 +156,43 @@ export interface SupportMessage {
   createdAt: string;
 }
 
+export interface MeetingParticipant {
+  id: string;
+  name: string;
+  branchName: string;
+  branchId: number;
+  role: 'host' | 'co-host' | 'participant';
+  isAudioMuted: boolean;
+  isVideoOff: boolean;
+  isHandRaised: boolean;
+  isScreenSharing: boolean;
+  joinedAt: string;
+  avatarColor?: string;
+}
+
+export interface MeetingChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderBranch: string;
+  text: string;
+  target: 'everyone' | string;
+  timestamp: string;
+}
+
+export interface MeetingRoom {
+  id: string;
+  title: string;
+  hostName: string;
+  hostBranchId: number;
+  hostBranchName: string;
+  passcode?: string;
+  status: 'active' | 'ended';
+  createdAt: string;
+  whiteboardData?: string;
+  allowScreenShare: boolean;
+  activeSpeakerId?: string;
+}
+
 
 

@@ -43,6 +43,7 @@ import { TrainingCatalogView } from './components/TrainingCatalogView';
 import { TrainingDetailModal } from './components/TrainingDetailModal';
 import { EBookReader } from './components/EBookReader';
 import { VideoHubView } from './components/VideoHubView';
+import { ZoomMeetingRoom } from './components/ZoomMeetingRoom';
 import { AdminTrainingPanel } from './components/AdminTrainingPanel';
 import { LeaderboardView } from './components/LeaderboardView';
 import { AdminAuthModal } from './components/AdminAuthModal';
@@ -53,11 +54,15 @@ export default function App() {
   const [completions, setCompletions] = useState<TrainingCompletion[]>(() => getStoredCompletions());
   const [announcements, setAnnouncements] = useState<TrainingAnnouncement[]>(() => getStoredAnnouncements());
   const [branches, setBranches] = useState<Branch[]>(() => getStoredBranches());
-  const [trainingActiveTab, setTrainingActiveTab] = useState<'catalog' | 'ebook' | 'video' | 'leaderboard' | 'admin'>(() => {
+  const [trainingActiveTab, setTrainingActiveTab] = useState<'catalog' | 'ebook' | 'video' | 'meeting' | 'leaderboard' | 'admin'>(() => {
     try {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('meeting')) return 'meeting';
+      const hash = window.location.hash;
+      if (hash.includes('meeting')) return 'meeting';
       const savedAdmin = localStorage.getItem('esme_is_admin_mode') === 'true';
       const savedTab = localStorage.getItem('esme_active_tab') as any;
-      const validTabs = ['catalog', 'ebook', 'video', 'leaderboard', 'admin'];
+      const validTabs = ['catalog', 'ebook', 'video', 'meeting', 'leaderboard', 'admin'];
       if (savedTab && validTabs.includes(savedTab)) return savedTab;
       if (savedAdmin) return 'admin';
     } catch {}
@@ -370,6 +375,54 @@ export default function App() {
       ? 'theme-sepia-wrapper bg-[#f4ecd8] text-[#2c2216]'
       : 'theme-light bg-slate-100 text-slate-900';
 
+  const urlMeetingId = useMemo(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('meeting') || null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // If user opened a direct Zoom meeting link from invite, permit direct meeting access
+  if (!isStoreAuthenticated && !isAdmin && urlMeetingId) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col p-2 sm:p-6 text-white font-sans">
+        <div className="max-w-7xl w-full mx-auto flex items-center justify-between py-2 mb-2 border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center font-black text-white shadow-lg shadow-blue-600/30">
+              ES
+            </div>
+            <div>
+              <span className="font-extrabold text-sm sm:text-base tracking-tight text-white block">
+                ESME Canlı Toplantı Portalı
+              </span>
+              <span className="text-[10px] text-slate-400">Zoom Toplantı Odası</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              window.location.search = '';
+            }}
+            className="text-xs text-slate-300 hover:text-white px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 hover:bg-slate-800 transition cursor-pointer"
+          >
+            Mağaza Girişine Dön
+          </button>
+        </div>
+        <main className="flex-1 max-w-7xl w-full mx-auto">
+          <ZoomMeetingRoom
+            currentBranchId={currentBranchId}
+            currentPersonnel={currentPersonnel}
+            branches={branches}
+            isAdmin={false}
+            appTheme="dark"
+            initialMeetingId={urlMeetingId}
+          />
+        </main>
+      </div>
+    );
+  }
+
   // Gatekeeper: If store user is not authenticated and not in admin mode, show StoreAuthGateway
   if (!isStoreAuthenticated && !isAdmin) {
     return (
@@ -554,6 +607,18 @@ export default function App() {
                 }
               }}
               isAdmin={isAdmin}
+            />
+          )}
+
+          {/* VIEW: ZOOM MEETING ROOM */}
+          {trainingActiveTab === 'meeting' && (
+            <ZoomMeetingRoom
+              currentBranchId={currentBranchId}
+              currentPersonnel={currentPersonnel}
+              branches={branches}
+              isAdmin={isAdmin}
+              appTheme={appTheme}
+              initialMeetingId={new URLSearchParams(window.location.search).get('meeting') || undefined}
             />
           )}
 

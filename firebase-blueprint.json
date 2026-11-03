@@ -25,7 +25,7 @@
     },
     "TrainingCompletion": {
       "title": "TrainingCompletion",
-      "description": "Digital tebellüğ and quiz completion record for a branch personnel",
+      "description": "Digital completion record for a branch personnel",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -40,6 +40,56 @@
         "certificateId": { "type": "string" }
       },
       "required": ["id", "trainingId", "branchId", "personnelName", "signedAgreement"]
+    },
+    "MeetingRoom": {
+      "title": "MeetingRoom",
+      "description": "Zoom-style live conference room for branches",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "hostName": { "type": "string" },
+        "hostBranchId": { "type": "number" },
+        "hostBranchName": { "type": "string" },
+        "passcode": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "ended"] },
+        "createdAt": { "type": "string" },
+        "allowScreenShare": { "type": "boolean" }
+      },
+      "required": ["id", "title", "hostName", "status"]
+    },
+    "MeetingParticipant": {
+      "title": "MeetingParticipant",
+      "description": "Active participant in a Zoom meeting room",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "branchName": { "type": "string" },
+        "branchId": { "type": "number" },
+        "role": { "type": "string", "enum": ["host", "co-host", "participant"] },
+        "isAudioMuted": { "type": "boolean" },
+        "isVideoOff": { "type": "boolean" },
+        "isHandRaised": { "type": "boolean" },
+        "isScreenSharing": { "type": "boolean" },
+        "joinedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "branchId", "role"]
+    },
+    "MeetingChatMessage": {
+      "title": "MeetingChatMessage",
+      "description": "In-meeting chat message",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderBranch": { "type": "string" },
+        "text": { "type": "string" },
+        "target": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "senderId", "senderName", "text"]
     },
     "AppData": {
       "title": "AppData",
@@ -58,6 +108,18 @@
     "/trainings/{trainingId}": {
       "schema": { "$ref": "#/entities/TrainingDocument" },
       "description": "Individual training module documents for real-time sync"
+    },
+    "/meetings/{meetingId}": {
+      "schema": { "$ref": "#/entities/MeetingRoom" },
+      "description": "Zoom style video meeting rooms"
+    },
+    "/meetings/{meetingId}/participants/{participantId}": {
+      "schema": { "$ref": "#/entities/MeetingParticipant" },
+      "description": "Active participants inside a Zoom meeting room"
+    },
+    "/meetings/{meetingId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/MeetingChatMessage" },
+      "description": "In-meeting chat messages"
     }
   }
 }

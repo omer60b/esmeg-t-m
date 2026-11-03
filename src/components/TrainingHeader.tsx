@@ -27,8 +27,8 @@ import { updateBranchPassword } from '../services/branchStorage';
 export type AppThemeMode = 'sepia' | 'light' | 'dark';
 
 interface TrainingHeaderProps {
-  activeTab: 'catalog' | 'ebook' | 'video' | 'leaderboard' | 'admin';
-  setActiveTab: (tab: 'catalog' | 'ebook' | 'video' | 'leaderboard' | 'admin') => void;
+  activeTab: 'catalog' | 'ebook' | 'video' | 'meeting' | 'leaderboard' | 'admin';
+  setActiveTab: (tab: 'catalog' | 'ebook' | 'video' | 'meeting' | 'leaderboard' | 'admin') => void;
   selectedCategory: 'all' | TrainingCategory;
   setSelectedCategory: (cat: 'all' | TrainingCategory) => void;
   searchQuery: string;
@@ -232,6 +232,22 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
             >
               <Video className="w-4 h-4 text-sky-400" />
               <span className="hidden sm:inline">Videolar</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('meeting')}
+              className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer relative ${
+                activeTab === 'meeting'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30 font-semibold'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+              title="ESME Canlı Toplantı Odası"
+            >
+              <div className="relative">
+                <Video className="w-4 h-4 text-emerald-400" />
+                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+              </div>
+              <span className="hidden sm:inline">Canlı Toplantı</span>
             </button>
 
             <button
