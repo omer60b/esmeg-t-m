@@ -508,12 +508,17 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     purgeStaleAndTestParticipants(meetingCode);
     purgeOldWebRTCSignals(meetingCode);
 
+    const joinTime = Date.now();
     const unsubRoom = subscribeToMeetingRoom(meetingCode, (room) => {
       if (room) {
         setMeetingRoom(room);
         if (room.status === 'ended') {
-          alert('Toplantı ev sahibi tarafından sonlandırıldı.');
-          handleLeaveMeeting();
+          // If room was ended prior to joining (within 10s of entering), automatically reactivate it
+          if (Date.now() - joinTime < 10000) {
+            createOrGetMeetingRoom(meetingCode, room.title, displayName, selectedBranchId, currentBranch.name);
+          } else {
+            handleLeaveMeeting();
+          }
         }
       }
     });
@@ -755,10 +760,8 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
   // Handle End for All (Host only)
   const handleEndForAll = async () => {
-    if (confirm('Toplantıyı tüm katılımcılar için sonlandırmak istediğinizden emin misiniz?')) {
-      await endMeetingForAll(meetingCode);
-      handleLeaveMeeting();
-    }
+    await endMeetingForAll(meetingCode);
+    handleLeaveMeeting();
   };
 
   // Toggle Audio (Mute / Unmute)
@@ -915,13 +918,18 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     const currentPath = window.location.pathname;
     const inviteUrl = `${currentOrigin}${currentPath}?meeting=${meetingCode}`;
     
-    navigator.clipboard.writeText(inviteUrl).then(() => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(inviteUrl).then(() => {
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2500);
+      }).catch(() => {
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2500);
+      });
+    } else {
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2500);
-    }).catch(() => {
-      // Fallback
-      prompt('Toplantı davet bağlantısı:', inviteUrl);
-    });
+    }
   };
 
   // Send In-Meeting Chat

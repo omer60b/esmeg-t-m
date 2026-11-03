@@ -86,6 +86,17 @@ export async function createOrGetMeetingRoom(
 
     if (snap && snap.exists()) {
       const data = snap.data() as MeetingRoom;
+      // If room was previously ended by host, automatically reactivate it for new meeting
+      if (data.status === 'ended') {
+        const reactivated: MeetingRoom = {
+          ...data,
+          status: 'active',
+          hostName: hostName || data.hostName,
+          title: title || data.title
+        };
+        updateDoc(roomRef, { status: 'active', hostName: reactivated.hostName }).catch(() => {});
+        return reactivated;
+      }
       return {
         ...data,
         id: cleanId
