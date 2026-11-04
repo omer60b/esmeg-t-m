@@ -85,7 +85,14 @@ const RTC_ICE_CONFIG: RTCConfiguration = {
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' }
+    { urls: 'stun:stun4.l.google.com:19302' },
+    ...(import.meta.env.VITE_TURN_URLS
+      ? [{
+          urls: String(import.meta.env.VITE_TURN_URLS).split(',').map(url => url.trim()).filter(Boolean),
+          username: import.meta.env.VITE_TURN_USERNAME,
+          credential: import.meta.env.VITE_TURN_CREDENTIAL
+        }]
+      : [])
   ],
   iceCandidatePoolSize: 10
 };
@@ -163,7 +170,7 @@ const RemoteVideoPlayer: React.FC<RemoteVideoPlayerProps> = ({
         ref={audioRef}
         autoPlay
         playsInline
-        muted={!!participant.isAudioMuted}
+        muted={!!participant.isAudioMuted || isSpeakerMuted}
       />
 
       {/* Real Live WebRTC Video Element */}
@@ -171,7 +178,7 @@ const RemoteVideoPlayer: React.FC<RemoteVideoPlayerProps> = ({
         ref={videoRef}
         autoPlay
         playsInline
-        muted={!!participant.isAudioMuted}
+        muted
         className={`w-full h-full object-cover transition-opacity duration-300 ${
           showVideo ? 'opacity-100 block' : 'opacity-0 pointer-events-none absolute'
         }`}
@@ -246,6 +253,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   // Media states
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
+  const [mediaError, setMediaError] = useState<string | null>(null);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isVirtualBlur, setIsVirtualBlur] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
@@ -304,7 +312,18 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   // WebRTC Peer Connections and Remote Media Streams
   const peerConnectionsRef = useRef<{ [peerId: string]: RTCPeerConnection }>({});
   const pendingCandidatesRef = useRef<{ [peerId: string]: RTCIceCandidateInit[] }>({});
+  const reconnectAttemptsRef = useRef<{ [peerId: string]: number }>({});
+  const isAudioMutedRef = useRef(isAudioMuted);
+  const activeSidePanelRef = useRef(activeSidePanel);
   const [remoteStreams, setRemoteStreams] = useState<{ [peerId: string]: MediaStream }>({});
+
+  useEffect(() => {
+    isAudioMutedRef.current = isAudioMuted;
+  }, [isAudioMuted]);
+
+  useEffect(() => {
+    activeSidePanelRef.current = activeSidePanel;
+  }, [activeSidePanel]);
 
   // Whiteboard canvas references
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -369,12 +388,54 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     };
 
     pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') {
+        reconnectAttemptsRef.current[remotePeerId] = 0;
+      }
+
+      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+        const attempt = reconnectAttemptsRef.current[remotePeerId] || 0;
+        if (attempt < 3 && meetingCode) {
+          reconnectAttemptsRef.current[remotePeerId] = attempt + 1;
+          window.setTimeout(async () => {
+            if (peerConnectionsRef.current[remotePeerId] !== pc) return;
+            try {
+              if (pc.connectionState === 'disconnected') {
+                await pc.restartIce();
+              }
+              const offer = await pc.createOffer({ iceRestart: true });
+              await pc.setLocalDescription(offer);
+              if (pc.localDescription) {
+                await sendWebRTCSignal(
+                  meetingCode,
+                  localParticipantId,
+                  remotePeerId,
+                  'offer',
+                  JSON.stringify(pc.localDescription)
+                );
+              }
+            } catch (error) {
+              console.warn('WebRTC reconnect attempt failed:', error);
+            }
+          }, Math.min(1000 * 2 ** attempt, 8000));
+        }
+      }
+
       if (pc.connectionState === 'closed' || pc.connectionState === 'failed') {
         setRemoteStreams(prev => {
           const next = { ...prev };
           delete next[remotePeerId];
           return next;
         });
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'failed') {
+        try {
+          pc.restartIce();
+        } catch (error) {
+          console.warn('ICE restart failed:', error);
+        }
       }
     };
 
@@ -387,6 +448,21 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     if (!payload || !meetingCode) return;
 
     try {
+      if (type === 'heartbeat') {
+        await sendWebRTCSignal(
+          meetingCode,
+          localParticipantId,
+          senderId,
+          'heartbeat-ack',
+          Date.now().toString()
+        );
+        return;
+      }
+
+      if (type === 'heartbeat-ack') {
+        return;
+      }
+
       if (type === 'offer') {
         const offerData = JSON.parse(payload);
         const pc = createPeerConnection(senderId, false);
@@ -442,6 +518,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   // Initialize camera and microphone in Lobby
   const initLocalMedia = useCallback(async () => {
     try {
+      setMediaError(null);
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(t => t.stop());
       }
@@ -483,7 +560,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
         const checkAudio = () => {
-          if (!analyserRef.current || isAudioMuted) {
+          if (!analyserRef.current || isAudioMutedRef.current) {
             setLocalAudioLevel(0);
             return;
           }
@@ -506,11 +583,15 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
       }
 
     } catch (err) {
-      console.warn("Camera or microphone permission not granted or unavailable, falling back to simulated audio/video:", err);
-      // Graceful fallback: Video off by default
+      const errorName = err instanceof DOMException ? err.name : '';
+      const message = errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError'
+        ? 'Kamera ve mikrofon izinleri reddedildi. Tarayıcı adres çubuğundaki izinlerden erişimi açabilirsiniz.'
+        : 'Kamera veya mikrofon kullanılamıyor. Donanım bağlantısını ve tarayıcı izinlerini kontrol edin.';
+      setMediaError(message);
+      console.warn('Camera or microphone initialization failed:', err);
       setIsVideoOff(true);
     }
-  }, [isAudioMuted, localParticipantId]);
+  }, [localParticipantId]);
 
   // Initial lobby media boot
   useEffect(() => {
@@ -576,7 +657,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
     const unsubChat = subscribeToMeetingChat(meetingCode, (messages) => {
       setChatMessages(messages);
-      if (activeSidePanel !== 'chat' && messages.length > 0) {
+      if (activeSidePanelRef.current !== 'chat' && messages.length > 0) {
         setUnreadChatCount(prev => prev + 1);
       }
     });
@@ -586,10 +667,24 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
       handleIncomingSignal(signal);
     });
 
-    // Send active presence heartbeat every 6 seconds
+    // Send active presence heartbeat every 6 seconds.
+    pingParticipant(meetingCode, localParticipantId);
     const pingInterval = setInterval(() => {
       pingParticipant(meetingCode, localParticipantId);
     }, 6000);
+    const signalingHeartbeatInterval = setInterval(() => {
+      Object.keys(peerConnectionsRef.current).forEach((peerId) => {
+        sendWebRTCSignal(
+          meetingCode,
+          localParticipantId,
+          peerId,
+          'heartbeat',
+          Date.now().toString()
+        ).catch((error) => {
+          console.warn('Signaling heartbeat failed:', error);
+        });
+      });
+    }, 10000);
 
     // Auto-remove participant if browser tab is closed, refreshed, or navigated away
     const handleUnload = () => {
@@ -600,6 +695,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
     return () => {
       clearInterval(pingInterval);
+      clearInterval(signalingHeartbeatInterval);
       window.removeEventListener('beforeunload', handleUnload);
       window.removeEventListener('pagehide', handleUnload);
       leaveMeetingParticipant(meetingCode, localParticipantId);
@@ -615,7 +711,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
       peerConnectionsRef.current = {};
       setRemoteStreams({});
     };
-  }, [isInMeeting, meetingCode, activeSidePanel, localParticipantId, handleIncomingSignal]);
+  }, [isInMeeting, meetingCode, localParticipantId, handleIncomingSignal]);
 
   // Synchronize WebRTC peer connections with remote participants
   useEffect(() => {
@@ -1214,6 +1310,11 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
                 </div>
               </div>
             </div>
+            {mediaError && (
+              <div role="alert" className="mt-3 w-full rounded-xl border border-amber-500/30 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
+                {mediaError}
+              </div>
+            )}
 
             {/* Quick Media Controls for Lobby */}
             <div className="flex items-center justify-center gap-2 sm:gap-3 mt-3 w-full">
@@ -1390,7 +1491,10 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     );
 
     return (
-      <div className="fixed inset-0 z-50 bg-[#121212] text-slate-100 flex flex-col h-[100dvh] max-h-[100dvh] w-full overflow-hidden select-none touch-manipulation pb-[env(safe-area-inset-bottom,0px)]">
+      <div
+        className="fixed inset-0 z-50 bg-[#121212] text-slate-100 flex flex-col h-[100dvh] max-h-[100dvh] w-full overflow-hidden select-none touch-manipulation pb-[env(safe-area-inset-bottom,0px)]"
+        onClick={(event) => event.stopPropagation()}
+      >
         
         {/* 1. ZOOM MOBILE TOP BAR */}
         <div className="h-14 bg-[#181818] border-b border-white/10 px-3 flex items-center justify-between z-20 shrink-0">
@@ -2263,8 +2367,9 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   // RENDER 3: DESKTOP IN-MEETING ROOM (ZOOM AUTHENTIC DOCK & GRID)
   // =========================================================================
   return (
-    <div 
+    <div
       ref={containerRef}
+      onClick={(event) => event.stopPropagation()}
       className="relative w-full h-[88vh] bg-[#1a1a1a] text-slate-100 flex flex-col overflow-hidden rounded-2xl border border-slate-800 shadow-2xl select-none"
     >
       
