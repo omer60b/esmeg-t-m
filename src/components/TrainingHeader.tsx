@@ -352,12 +352,13 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
             </button>
 
             {/* Personnel & Branch Switcher Dropdown */}
-            <div className="relative ml-1">
+            <div className="relative ml-1 shrink-0">
               <button
+                type="button"
                 onClick={() => setShowUserDropdown(!showUserDropdown)}
-                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700/80 border border-slate-700 px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer"
+                className="flex items-center gap-1.5 sm:gap-2 bg-slate-800 hover:bg-slate-700/80 border border-slate-700 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer shrink-0"
               >
-                <div className="w-6 h-6 rounded-full bg-red-900/60 border border-red-500/40 flex items-center justify-center text-red-300 font-bold">
+                <div className="w-6 h-6 rounded-full bg-red-900/60 border border-red-500/40 flex items-center justify-center text-red-300 font-bold shrink-0">
                   {currentPersonnel.charAt(0) || 'P'}
                 </div>
                 <div className="text-left hidden sm:block">
@@ -371,7 +372,7 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
               </button>
 
               {showUserDropdown && (
-                <div className="absolute right-0 mt-2 w-72 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-3 z-50 animate-in fade-in zoom-in-95 duration-100">
+                <div className="absolute right-0 mt-2 w-72 max-w-[calc(100vw-1.5rem)] bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-3 z-50 animate-in fade-in zoom-in-95 duration-100">
                   <div className="pb-2 border-b border-slate-800 mb-2">
                     <p className="text-xs font-semibold text-slate-300">Aktif Şube ve Personel Bilgisi</p>
                     <p className="text-[11px] text-slate-400">Sınav ve sertifikalarda bu bilgiler yer alır</p>

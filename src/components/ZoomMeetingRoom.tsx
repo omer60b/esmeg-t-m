@@ -206,20 +206,26 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   initialMeetingId,
   onLeaveMeeting
 }) => {
-  // Mobile device detection
+  // Mobile and tablet device detection
   const [isMobile, setIsMobile] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      return window.innerWidth < 768;
+      const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      return window.innerWidth < 768 || (isTouch && window.innerWidth < 1024);
     }
     return false;
   });
 
   useEffect(() => {
     const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
+      const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      setIsMobile(window.innerWidth < 768 || (isTouch && window.innerWidth < 1024));
     };
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
   }, []);
 
   // Session / Room identifiers
@@ -257,13 +263,10 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   const [showReactionsPopover, setShowReactionsPopover] = useState(false);
   const [showWhiteboard, setShowWhiteboard] = useState(false);
 
-  // Default viewMode: On mobile phone default to 'speaker' (Zoom Active Speaker screen), on desktop default to 'grid'
-  const [viewMode, setViewMode] = useState<'grid' | 'speaker'>(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      return 'speaker';
-    }
-    return 'grid';
-  });
+  // View modes: 'grid' (Galeri) vs 'speaker' (Konuşmacı). Default to 'grid' with 4x4 layout as requested
+  const [viewMode, setViewMode] = useState<'grid' | 'speaker'>('grid');
+  // Gallery layout: '4x4' (16 tiles grid) or '2x2' (4 tiles)
+  const [galleryLayout, setGalleryLayout] = useState<'4x4' | '2x2'>('4x4');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -1113,8 +1116,9 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     }
   };
 
-  // Grid columns calculator for video stage - maintains 16:9 aspect ratio and stable boxes as users join
+  // Grid columns calculator for video stage - maintains 4x4 / balanced aspect ratio
   const getGridClass = (count: number) => {
+    if (galleryLayout === '4x4') return 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 max-w-7xl w-full mx-auto';
     if (count <= 1) return 'grid-cols-1 max-w-4xl w-full mx-auto';
     if (count === 2) return 'grid-cols-1 sm:grid-cols-2 max-w-5xl w-full mx-auto';
     if (count <= 4) return 'grid-cols-1 sm:grid-cols-2 max-w-5xl w-full mx-auto';
@@ -1124,6 +1128,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   };
 
   const getTileMaxHeight = (count: number) => {
+    if (galleryLayout === '4x4') return 'max-h-[22vh]';
     if (count <= 1) return 'max-h-[66vh]';
     if (count <= 2) return 'max-h-[58vh]';
     if (count <= 4) return 'max-h-[36vh]';
@@ -1133,16 +1138,36 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   };
 
   // =========================================================================
-  // RENDER 1: ZOOM PRE-JOIN LOBBY / BEKLEME ODASI
+  // RENDER 1: ZOOM PRE-JOIN LOBBY / BEKLEME ODASI (RESPONSIVE & MOBILE-ALIGNED)
   // =========================================================================
   if (!isInMeeting) {
     return (
-      <div className="min-h-[82vh] flex items-center justify-center p-2.5 sm:p-6 bg-slate-950 text-slate-100 font-sans">
-        <div className="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden p-4 sm:p-8 flex flex-col md:flex-row gap-6 sm:gap-8 items-center">
+      <div className="w-full min-h-[85vh] flex flex-col items-center justify-center p-2 sm:p-6 bg-slate-950 text-slate-100 font-sans">
+        
+        {/* Top Navigation Bar for Lobby (Allows Mobile Users to return to trainings anytime) */}
+        <div className="w-full max-w-4xl flex items-center justify-between mb-3 px-2">
+          {onLeaveMeeting ? (
+            <button
+              type="button"
+              onClick={onLeaveMeeting}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition cursor-pointer border border-slate-700 shadow-sm"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span>Eğitimlere Dön</span>
+            </button>
+          ) : <div />}
+
+          <div className="flex items-center gap-2 bg-emerald-950/70 border border-emerald-800/80 px-3 py-1 rounded-full text-emerald-400 text-xs font-bold">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>ESME Canlı Toplantı Salonu</span>
+          </div>
+        </div>
+
+        <div className="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden p-3.5 sm:p-7 flex flex-col md:flex-row gap-4 sm:gap-7 items-stretch">
           
           {/* Left: Camera & Microphone Preview Tile */}
-          <div className="w-full md:w-1/2 flex flex-col items-center">
-            <div className="relative w-full aspect-video bg-slate-950 rounded-2xl overflow-hidden border-2 border-slate-800 shadow-inner flex items-center justify-center">
+          <div className="w-full md:w-1/2 flex flex-col items-center justify-between">
+            <div className="relative w-full aspect-video max-h-56 sm:max-h-none bg-slate-950 rounded-2xl overflow-hidden border-2 border-slate-800 shadow-inner flex items-center justify-center">
               
               {/* Local video feed */}
               <video
@@ -1157,8 +1182,8 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
               {/* Camera Off Avatar */}
               {isVideoOff && (
-                <div className="flex flex-col items-center justify-center gap-3">
-                  <div className={`w-24 h-24 rounded-full bg-gradient-to-br ${getAvatarColor(displayName)} flex items-center justify-center text-white text-3xl font-black shadow-xl ring-4 ring-slate-800`}>
+                <div className="flex flex-col items-center justify-center gap-2">
+                  <div className={`w-20 sm:w-24 h-20 sm:h-24 rounded-full bg-gradient-to-br ${getAvatarColor(displayName)} flex items-center justify-center text-white text-2xl sm:text-3xl font-black shadow-xl ring-4 ring-slate-800`}>
                     {getInitials(displayName)}
                   </div>
                   <span className="text-xs text-slate-400 font-medium">Kamera Kapalı</span>
@@ -1166,62 +1191,62 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
               )}
 
               {/* Status indicators over video */}
-              <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-2 text-white">
+              <div className="absolute top-2.5 left-2.5 bg-black/70 backdrop-blur-md px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 text-white">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span>Önizleme</span>
               </div>
 
               {/* Audio meter bar */}
-              <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10">
-                <span className="text-xs font-semibold truncate max-w-[150px]">{displayName}</span>
+              <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between bg-black/75 backdrop-blur-md px-2.5 py-1.5 rounded-xl border border-white/10">
+                <span className="text-xs font-bold text-white truncate max-w-[140px]">{displayName}</span>
                 <div className="flex items-center gap-2">
-                  <div className="w-16 h-2 bg-slate-800 rounded-full overflow-hidden flex">
+                  <div className="w-14 sm:w-16 h-2 bg-slate-800 rounded-full overflow-hidden flex">
                     <div 
                       className={`h-full transition-all duration-75 ${isAudioMuted ? 'bg-red-500 w-0' : 'bg-emerald-500'}`}
                       style={{ width: isAudioMuted ? '0%' : `${Math.min(100, localAudioLevel * 2)}%` }}
                     />
                   </div>
                   {isAudioMuted ? (
-                    <MicOff className="w-4 h-4 text-rose-500" />
+                    <MicOff className="w-3.5 h-3.5 text-rose-500" />
                   ) : (
-                    <Mic className="w-4 h-4 text-emerald-400" />
+                    <Mic className="w-3.5 h-3.5 text-emerald-400" />
                   )}
                 </div>
               </div>
             </div>
 
             {/* Quick Media Controls for Lobby */}
-            <div className="flex items-center gap-3 mt-4">
+            <div className="flex items-center justify-center gap-2 sm:gap-3 mt-3 w-full">
               <button
                 type="button"
                 onClick={toggleAudio}
-                className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                className={`flex-1 py-2 sm:py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
                   isAudioMuted 
                     ? 'bg-rose-600/20 text-rose-300 border border-rose-500/30 hover:bg-rose-600/30' 
                     : 'bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700'
                 }`}
               >
                 {isAudioMuted ? <MicOff className="w-4 h-4 text-rose-400" /> : <Mic className="w-4 h-4 text-emerald-400" />}
-                <span>{isAudioMuted ? 'Mikrofonu Aç' : 'Mikrofon Açık'}</span>
+                <span>{isAudioMuted ? 'Mikrofon Aç' : 'Mikrofon Açık'}</span>
               </button>
 
               <button
                 type="button"
                 onClick={toggleVideo}
-                className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                className={`flex-1 py-2 sm:py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
                   isVideoOff 
                     ? 'bg-rose-600/20 text-rose-300 border border-rose-500/30 hover:bg-rose-600/30' 
                     : 'bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700'
                 }`}
               >
                 {isVideoOff ? <VideoOff className="w-4 h-4 text-rose-400" /> : <Video className="w-4 h-4 text-sky-400" />}
-                <span>{isVideoOff ? 'Kamerayı Başlat' : 'Kamera Açık'}</span>
+                <span>{isVideoOff ? 'Kamera Başlat' : 'Kamera Açık'}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setIsVirtualBlur(!isVirtualBlur)}
-                className={`p-2 rounded-xl text-xs font-bold transition border cursor-pointer ${
+                className={`p-2 sm:p-2.5 rounded-xl text-xs font-bold transition border cursor-pointer shrink-0 ${
                   isVirtualBlur 
                     ? 'bg-indigo-600/30 text-indigo-300 border-indigo-500/40' 
                     : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
@@ -1234,45 +1259,45 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
           </div>
 
           {/* Right: Join Configuration Box (Zoom Style) */}
-          <div className="w-full md:w-1/2 flex flex-col justify-between space-y-5">
+          <div className="w-full md:w-1/2 flex flex-col justify-between space-y-3.5">
             <div>
-              <div className="flex items-center gap-2.5 mb-2">
-                <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-600/30 font-black">
-                  <Video className="w-6 h-6" />
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-600/30 font-black shrink-0">
+                  <Video className="w-5 h-5 sm:w-6 sm:h-6" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-black tracking-tight text-white flex items-center gap-2">
-                    ESME Canlı Toplantı Odası
+                  <h2 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
+                    ESME Canlı Toplantı
                     <span className="text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full font-bold">
-                      Canlı Toplantı
+                      Canlı
                     </span>
                   </h2>
-                  <p className="text-xs text-slate-400">
-                    Sesli, görüntülü ve ekran paylaşımlı interaktif toplantı odası
+                  <p className="text-[11px] text-slate-400 leading-tight">
+                    Sesli, görüntülü ve 4*4 galeri destekli toplantı odası
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-3.5 bg-slate-950/60 p-4 rounded-2xl border border-slate-800">
+            <div className="space-y-2.5 sm:space-y-3 bg-slate-950/60 p-3 sm:p-4 rounded-2xl border border-slate-800">
               
               {/* Meeting Code / ID */}
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                <label className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                   Toplantı Kimliği / Oda Kodu:
                 </label>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5">
                   <input
                     type="text"
                     value={meetingCode}
                     onChange={(e) => setMeetingCode(e.target.value.toUpperCase())}
                     placeholder="Örn: ESME-482-910"
-                    className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono tracking-wide"
+                    className="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono tracking-wide"
                   />
                   <button
                     type="button"
                     onClick={() => setMeetingCode(generateMeetingCode())}
-                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-semibold text-slate-300 transition cursor-pointer"
+                    className="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-semibold text-slate-300 transition cursor-pointer shrink-0"
                     title="Yeni Oda Kodu Oluştur"
                   >
                     Yeni Kod
@@ -1282,7 +1307,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
               {/* Display Name */}
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                <label className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                   Katılımcı Adı Soyadı:
                 </label>
                 <input
@@ -1290,20 +1315,20 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="Adınız ve Soyadınız"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               {/* Branch Selector */}
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1 flex items-center justify-between">
+                <label className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1 flex items-center justify-between">
                   <span>Mağaza / Birim:</span>
                   <span className="text-[10px] text-slate-500 font-normal">({branches.length} Mağaza)</span>
                 </label>
                 <select
                   value={selectedBranchId}
                   onChange={(e) => setSelectedBranchId(Number(e.target.value))}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {branches.map(b => (
                     <option key={b.id} value={b.id}>
@@ -1314,36 +1339,36 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
               </div>
 
               {/* Invite Link Sharing Box */}
-              <div className="p-2.5 rounded-xl bg-blue-950/30 border border-blue-900/40 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 overflow-hidden">
-                  <Share2 className="w-4 h-4 text-blue-400 shrink-0" />
-                  <span className="text-[11px] text-blue-200 truncate">
-                    Davet Linki: ?meeting={meetingCode}
+              <div className="p-2 rounded-xl bg-blue-950/30 border border-blue-900/40 flex items-center justify-between gap-1.5">
+                <div className="flex items-center gap-1.5 overflow-hidden">
+                  <Share2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                  <span className="text-[10px] text-blue-200 truncate">
+                    Davet: ?meeting={meetingCode}
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={copyMeetingLink}
-                  className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold flex items-center gap-1 shrink-0 transition cursor-pointer"
+                  className="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold flex items-center gap-1 shrink-0 transition cursor-pointer"
                 >
-                  {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedLink ? 'Kopyalandı' : 'Linki Kopyala'}</span>
+                  {copiedLink ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedLink ? 'Kopyalandı' : 'Kopyala'}</span>
                 </button>
               </div>
             </div>
 
-            {/* Join Action Button */}
-            <div className="pt-2">
+            {/* Join Action Button (Prominent & Always Visible) */}
+            <div className="pt-1">
               <button
                 type="button"
                 onClick={handleJoinMeeting}
-                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-sm tracking-wide shadow-xl shadow-blue-600/30 flex items-center justify-center gap-2.5 transition transform hover:scale-[1.01] cursor-pointer"
+                className="w-full py-3 sm:py-3.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.98] text-white font-black text-sm tracking-wide shadow-xl shadow-blue-600/30 flex items-center justify-center gap-2 transition cursor-pointer"
               >
                 <Video className="w-5 h-5" />
                 <span>TOPLANTIYA KATIL</span>
               </button>
-              <p className="text-center text-[11px] text-slate-500 mt-2">
-                Tüm şubeler bu odaya şifresiz veya link üzerinden anında bağlanabilir.
+              <p className="text-center text-[10px] text-slate-500 mt-1.5">
+                Tüm mağazalar şifresiz bağlanabilir • 4*4 Galeri & Konuşmacı modu
               </p>
             </div>
           </div>
@@ -1357,7 +1382,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   // RENDER 2: DEDICATED ZOOM MOBILE ACTIVE SPEAKER EXPERIENCE
   // =========================================================================
   if (isMobile) {
-    const mobilePageSize = 4;
+    const mobilePageSize = galleryLayout === '4x4' ? 16 : 4;
     const totalMobilePages = Math.ceil(allParticipants.length / mobilePageSize) || 1;
     const currentMobileParticipants = allParticipants.slice(
       mobileGridPage * mobilePageSize,
@@ -1365,7 +1390,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     );
 
     return (
-      <div className="fixed inset-0 z-50 bg-[#121212] text-slate-100 flex flex-col overflow-hidden select-none touch-manipulation">
+      <div className="fixed inset-0 z-50 bg-[#121212] text-slate-100 flex flex-col h-[100dvh] max-h-[100dvh] w-full overflow-hidden select-none touch-manipulation pb-[env(safe-area-inset-bottom,0px)]">
         
         {/* 1. ZOOM MOBILE TOP BAR */}
         <div className="h-14 bg-[#181818] border-b border-white/10 px-3 flex items-center justify-between z-20 shrink-0">
@@ -1411,13 +1436,13 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
           </button>
         </div>
 
-        {/* 2. ZOOM VIEW SWITCHER PILL (Konuşmacı vs Galeri) */}
-        <div className="h-10 bg-[#141414] px-3 flex items-center justify-between border-b border-white/5 z-10 shrink-0">
+        {/* 2. ZOOM VIEW SWITCHER PILL (Konuşmacı vs Galeri 4*4 vs 2x2) */}
+        <div className="h-10 bg-[#141414] px-2 sm:px-3 flex items-center justify-between border-b border-white/5 z-10 shrink-0">
           <div className="flex items-center bg-black/60 p-0.5 rounded-lg border border-white/10 text-[11px] font-bold">
             <button
               type="button"
               onClick={() => setViewMode('speaker')}
-              className={`px-2.5 py-1 rounded-md transition ${
+              className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
                 viewMode === 'speaker' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -1425,17 +1450,33 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setViewMode('grid')}
-              className={`px-2.5 py-1 rounded-md transition ${
-                viewMode === 'grid' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
+              onClick={() => {
+                setViewMode('grid');
+                setGalleryLayout('4x4');
+              }}
+              className={`px-2.5 py-1 rounded-md transition cursor-pointer flex items-center gap-1 ${
+                viewMode === 'grid' && galleryLayout === '4x4' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
               }`}
             >
-              Galeri (2x2)
+              <LayoutGrid className="w-3 h-3" />
+              <span>Galeri (4*4)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode('grid');
+                setGalleryLayout('2x2');
+              }}
+              className={`px-2 py-1 rounded-md transition cursor-pointer ${
+                viewMode === 'grid' && galleryLayout === '2x2' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              2x2
             </button>
           </div>
 
           {/* Active Speaker ticker */}
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-300 truncate max-w-[160px]">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-300 truncate max-w-[130px]">
             <Radio className="w-3 h-3 text-emerald-400 animate-pulse shrink-0" />
             <span className="truncate font-semibold">
               {allParticipants.find(p => p.id === activeSpeakerId)?.name || featuredSpeaker?.name || displayName}
@@ -1671,11 +1712,14 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
             </div>
           ) : (
             /* ============================================================== */
-            /* ZOOM MOBILE COMPACT 2x2 GALLERY GRID                           */
             /* ============================================================== */
-            <div className="w-full h-full flex flex-col justify-between items-center">
-              <div className={`w-full flex-1 grid gap-2 p-1 ${
-                currentMobileParticipants.length === 1 
+            /* ZOOM MOBILE 4*4 / 2x2 GALLERY GRID                             */
+            /* ============================================================== */
+            <div className="w-full h-full flex flex-col justify-between items-center overflow-hidden">
+              <div className={`w-full flex-1 grid gap-1 sm:gap-1.5 p-1 ${
+                galleryLayout === '4x4'
+                  ? 'grid-cols-4 grid-rows-4 auto-rows-fr'
+                  : currentMobileParticipants.length === 1 
                   ? 'grid-cols-1 grid-rows-1' 
                   : currentMobileParticipants.length === 2 
                   ? 'grid-cols-1 grid-rows-2' 
@@ -1694,7 +1738,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
                         setIsPinned(p.id);
                         setViewMode('speaker');
                       }}
-                      className={`relative w-full h-full bg-[#1e1e1e] rounded-xl overflow-hidden border flex items-center justify-center cursor-pointer transition ${
+                      className={`relative w-full h-full bg-[#1e1e1e] rounded-lg sm:rounded-xl overflow-hidden border flex items-center justify-center cursor-pointer transition select-none ${
                         isSpeaking 
                           ? 'border-emerald-500 ring-2 ring-emerald-500/80 shadow-md' 
                           : 'border-white/10'
@@ -1712,11 +1756,13 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
                             }`}
                           />
                           {isVideoOffState && (
-                            <div className="flex flex-col items-center justify-center gap-1 select-none">
-                              <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${p.avatarColor || getAvatarColor(p.name)} flex items-center justify-center text-white text-base font-black shadow-lg`}>
+                            <div className="flex flex-col items-center justify-center gap-0.5 select-none p-0.5">
+                              <div className={`${galleryLayout === '4x4' ? 'w-6 h-6 sm:w-8 sm:h-8 text-[10px] sm:text-xs' : 'w-12 h-12 text-base'} rounded-full bg-gradient-to-br ${p.avatarColor || getAvatarColor(p.name)} flex items-center justify-center text-white font-black shadow-lg`}>
                                 {getInitials(p.name)}
                               </div>
-                              <span className="text-[10px] font-bold text-slate-300">{p.name}</span>
+                              {galleryLayout !== '4x4' && (
+                                <span className="text-[10px] font-bold text-slate-300 truncate max-w-[80px]">{p.name}</span>
+                              )}
                             </div>
                           )}
                         </>
@@ -1730,14 +1776,14 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
                       )}
 
                       {/* Small Name badge */}
-                      <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between bg-black/80 backdrop-blur-sm px-2 py-1 rounded-lg text-[10px] text-white">
-                        <span className="font-bold truncate max-w-[80px]">{p.name}</span>
-                        <div className="flex items-center gap-1">
-                          {p.isHandRaised && <Hand className="w-2.5 h-2.5 text-amber-400 fill-current" />}
+                      <div className={`absolute bottom-0.5 left-0.5 right-0.5 flex items-center justify-between bg-black/80 backdrop-blur-xs ${galleryLayout === '4x4' ? 'px-1 py-0.5 rounded text-[8px]' : 'px-2 py-1 rounded-lg text-[10px]'} text-white`}>
+                        <span className={`font-bold truncate ${galleryLayout === '4x4' ? 'max-w-[42px] sm:max-w-[60px]' : 'max-w-[80px]'}`}>{p.name}</span>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          {p.isHandRaised && <Hand className={`${galleryLayout === '4x4' ? 'w-2 h-2' : 'w-2.5 h-2.5'} text-amber-400 fill-current`} />}
                           {isAudioMutedState ? (
-                            <MicOff className="w-3 h-3 text-rose-400 shrink-0" />
+                            <MicOff className={`${galleryLayout === '4x4' ? 'w-2 h-2' : 'w-3 h-3'} text-rose-400 shrink-0`} />
                           ) : (
-                            <Mic className="w-3 h-3 text-emerald-400 shrink-0" />
+                            <Mic className={`${galleryLayout === '4x4' ? 'w-2 h-2' : 'w-3 h-3'} text-emerald-400 shrink-0`} />
                           )}
                         </div>
                       </div>
@@ -1748,21 +1794,24 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
               {/* Gallery Page Dots */}
               {totalMobilePages > 1 && (
-                <div className="h-6 flex items-center justify-center gap-2 shrink-0">
+                <div className="h-6 flex items-center justify-center gap-2 shrink-0 my-0.5">
                   <button
                     onClick={() => setMobileGridPage(prev => Math.max(0, prev - 1))}
                     disabled={mobileGridPage === 0}
-                    className="p-1 text-slate-400 disabled:opacity-20"
+                    className="p-1 text-slate-400 disabled:opacity-20 cursor-pointer"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
                   </button>
-                  <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {mobileGridPage + 1} / {totalMobilePages}
+                  </span>
+                  <div className="flex items-center gap-1">
                     {Array.from({ length: totalMobilePages }).map((_, idx) => (
                       <button
                         key={idx}
                         onClick={() => setMobileGridPage(idx)}
-                        className={`h-1.5 rounded-full transition-all ${
-                          idx === mobileGridPage ? 'w-4 bg-blue-500' : 'w-1.5 bg-white/30'
+                        className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                          idx === mobileGridPage ? 'w-3.5 bg-blue-500' : 'w-1.5 bg-white/30'
                         }`}
                       />
                     ))}
@@ -1770,7 +1819,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
                   <button
                     onClick={() => setMobileGridPage(prev => Math.min(totalMobilePages - 1, prev + 1))}
                     disabled={mobileGridPage === totalMobilePages - 1}
-                    className="p-1 text-slate-400 disabled:opacity-20"
+                    className="p-1 text-slate-400 disabled:opacity-20 cursor-pointer"
                   >
                     <ChevronRight className="w-3.5 h-3.5" />
                   </button>
@@ -2309,18 +2358,37 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
         {/* Right: View mode & Fullscreen */}
         <div className="flex items-center gap-2">
-
-          <button
-            type="button"
-            onClick={() => setViewMode(viewMode === 'grid' ? 'speaker' : 'grid')}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-medium text-slate-300 transition cursor-pointer"
-            title={viewMode === 'grid' ? 'Konuşmacı Görünümüne Geç' : 'Galeri Görünümüne Geç'}
-          >
-            <LayoutGrid className="w-4 h-4 text-slate-300" />
-            <span className="hidden sm:inline">
-              {viewMode === 'grid' ? 'Galeri' : 'Konuşmacı'}
-            </span>
-          </button>
+          <div className="flex items-center bg-black/50 p-0.5 rounded-lg border border-white/10 text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode('grid');
+                setGalleryLayout('4x4');
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md font-bold transition cursor-pointer ${
+                viewMode === 'grid' && galleryLayout === '4x4'
+                  ? 'bg-blue-600 text-white shadow'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+              title="4*4 Galeri Görünümü (16 Katılımcı)"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Galeri (4*4)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode(viewMode === 'speaker' ? 'grid' : 'speaker')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md font-bold transition cursor-pointer ${
+                viewMode === 'speaker'
+                  ? 'bg-blue-600 text-white shadow'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+              title="Tek Ekran Konuşmacı Görünümü"
+            >
+              <User className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Konuşmacı</span>
+            </button>
+          </div>
 
           <button
             type="button"
