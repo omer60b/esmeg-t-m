@@ -2,6 +2,41 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Anti-slip and responsive layout guarantees across phone, tablet, and desktop */
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  position: relative;
+  -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* Prevent iOS Safari auto-zoom on input focus which causes horizontal layout slipping (kayma) */
+@media (max-width: 768px) {
+  input[type="text"],
+  input[type="password"],
+  input[type="search"],
+  input[type="number"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Safe area insets for notched mobile phones */
+.safe-area-pb {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px);
+}
+
+.safe-area-pt {
+  padding-top: max(env(safe-area-inset-top, 0px), 8px);
+}
+
 /* High-contrast readability guarantees for Light (Açık) and Sepia (Kitap Kağıdı) themes across all pages */
 html.theme-light body {
   background-color: #f1f5f9;

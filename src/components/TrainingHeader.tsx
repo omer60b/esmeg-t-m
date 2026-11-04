@@ -817,18 +817,19 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
           </div>
         </div>
       )}
-      {/* FIXED MOBILE BOTTOM NAVIGATION BAR FOR PHONES */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 shadow-[0_-4px_25px_rgba(0,0,0,0.5)] px-2 py-1 flex items-center justify-around safe-area-pb">
-        <button
-          type="button"
-          onClick={() => setActiveTab('catalog')}
-          className={`flex flex-col items-center justify-center py-1 flex-1 transition cursor-pointer ${
-            activeTab === 'catalog' ? 'text-red-500 font-extrabold' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <GraduationCap className={`w-5 h-5 ${activeTab === 'catalog' ? 'text-red-500 scale-110' : ''} transition-transform`} />
-          <span className="text-[10px] mt-0.5 font-medium">Eğitimler</span>
-        </button>
+      {/* FIXED MOBILE BOTTOM NAVIGATION BAR FOR PHONES (Hidden during meeting to avoid covering Zoom controls) */}
+      {activeTab !== 'meeting' && (
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 shadow-[0_-4px_25px_rgba(0,0,0,0.5)] px-1 sm:px-2 py-1 flex items-center justify-around safe-area-pb">
+          <button
+            type="button"
+            onClick={() => setActiveTab('catalog')}
+            className={`flex flex-col items-center justify-center py-1 flex-1 min-w-0 transition cursor-pointer ${
+              activeTab === 'catalog' ? 'text-red-500 font-extrabold' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <GraduationCap className={`w-5 h-5 ${activeTab === 'catalog' ? 'text-red-500 scale-110' : ''} transition-transform`} />
+            <span className="text-[10px] mt-0.5 font-medium truncate max-w-full">Eğitimler</span>
+          </button>
 
         <button
           type="button"
@@ -856,11 +857,11 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
           type="button"
           onClick={() => setActiveTab('meeting')}
           className={`flex flex-col items-center justify-center py-1 flex-1 transition cursor-pointer relative ${
-            activeTab === 'meeting' ? 'text-blue-400 font-extrabold' : 'text-slate-400 hover:text-slate-200'
+            (activeTab as string) === 'meeting' ? 'text-blue-400 font-extrabold' : 'text-slate-400 hover:text-slate-200'
           }`}
         >
           <div className="relative">
-            <Video className={`w-5 h-5 ${activeTab === 'meeting' ? 'text-blue-400 scale-110' : 'text-emerald-400'} transition-transform`} />
+            <Video className={`w-5 h-5 ${(activeTab as string) === 'meeting' ? 'text-blue-400 scale-110' : 'text-emerald-400'} transition-transform`} />
             <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
           </div>
           <span className="text-[10px] mt-0.5 font-medium">Toplantı</span>
@@ -881,15 +882,16 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('admin')}
-            className={`flex flex-col items-center justify-center py-1 flex-1 transition cursor-pointer ${
+            className={`flex flex-col items-center justify-center py-1 flex-1 min-w-0 transition cursor-pointer ${
               activeTab === 'admin' ? 'text-red-400 font-extrabold' : 'text-amber-400 hover:text-amber-300'
             }`}
           >
             <Settings className={`w-5 h-5 ${activeTab === 'admin' ? 'text-red-400 scale-110' : ''} transition-transform`} />
-            <span className="text-[10px] mt-0.5 font-medium">Yönetici</span>
+            <span className="text-[10px] mt-0.5 font-medium truncate max-w-full">Yönetici</span>
           </button>
         )}
       </nav>
+      )}
     </header>
   );
 };

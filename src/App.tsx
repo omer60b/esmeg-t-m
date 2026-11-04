@@ -478,89 +478,98 @@ export default function App() {
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 lg:pb-8">
-          {/* Global Theme Switcher Bar (Visible Across All Pages for Instant Access) */}
-          <div className={`mb-4 rounded-2xl border px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 transition-colors ${
-            appTheme === 'dark'
-              ? 'bg-slate-900/90 border-slate-800 text-slate-200'
-              : appTheme === 'sepia'
-              ? 'bg-[#efe4c8] border-[#d5c4a1] text-[#2c2216]'
-              : 'bg-white border-slate-200 text-slate-900 shadow-xs'
-          }`}>
-            <div className="flex items-center gap-2 text-xs font-bold">
-              <span className={`w-2 h-2 rounded-full ${
-                appTheme === 'dark' ? 'bg-indigo-400' : appTheme === 'sepia' ? 'bg-amber-700' : 'bg-emerald-600'
-              }`} />
-              <span>Portal Görünüm Teması (Tüm Sayfalar):</span>
-              <span className={`font-semibold text-[11px] ${
-                appTheme === 'dark' ? 'text-slate-400' : appTheme === 'sepia' ? 'text-[#5c4932]' : 'text-slate-600'
+        <main className={`flex-1 w-full mx-auto transition-all ${
+          trainingActiveTab === 'meeting' 
+            ? 'max-w-7xl px-0 sm:px-4 py-0 sm:py-2 pb-0' 
+            : 'max-w-7xl px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 lg:pb-8'
+        }`}>
+          {/* Top Banners & Global Theme Bar (Displayed on Catalog, E-Book, Video, Leaderboard, Admin) */}
+          {trainingActiveTab !== 'meeting' && (
+            <>
+              {/* Global Theme Switcher Bar (Visible Across All Pages for Instant Access) */}
+              <div className={`mb-4 rounded-2xl border px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 transition-colors ${
+                appTheme === 'dark'
+                  ? 'bg-slate-900/90 border-slate-800 text-slate-200'
+                  : appTheme === 'sepia'
+                  ? 'bg-[#efe4c8] border-[#d5c4a1] text-[#2c2216]'
+                  : 'bg-white border-slate-200 text-slate-900 shadow-xs'
               }`}>
-                {appTheme === 'sepia' ? 'Kitap Kağıdı (Göz Yormayan Okuma Modu)' : appTheme === 'light' ? 'Açık Tema (Yüksek Kontrastlı Okunaklı Görünüm)' : 'Koyu Tema (Gece Görünümü)'}
-              </span>
-            </div>
+                <div className="flex items-center gap-2 text-xs font-bold">
+                  <span className={`w-2 h-2 rounded-full ${
+                    appTheme === 'dark' ? 'bg-indigo-400' : appTheme === 'sepia' ? 'bg-amber-700' : 'bg-emerald-600'
+                  }`} />
+                  <span>Portal Görünüm Teması (Tüm Sayfalar):</span>
+                  <span className={`font-semibold text-[11px] ${
+                    appTheme === 'dark' ? 'text-slate-400' : appTheme === 'sepia' ? 'text-[#5c4932]' : 'text-slate-600'
+                  }`}>
+                    {appTheme === 'sepia' ? 'Kitap Kağıdı (Göz Yormayan Okuma Modu)' : appTheme === 'light' ? 'Açık Tema (Yüksek Kontrastlı Okunaklı Görünüm)' : 'Koyu Tema (Gece Görünümü)'}
+                  </span>
+                </div>
 
-            <div className={`flex items-center rounded-xl p-1 border ${
-              appTheme === 'dark'
-                ? 'bg-slate-950 border-slate-800'
-                : appTheme === 'sepia'
-                ? 'bg-[#e6d7b2] border-[#c8b58c]'
-                : 'bg-slate-100 border-slate-200'
-            }`}>
-              <button
-                onClick={() => setAppTheme('sepia')}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  appTheme === 'sepia'
-                    ? 'bg-[#f4ecd8] text-[#2c2216] shadow-xs border border-[#c8b58c]'
-                    : appTheme === 'light'
-                    ? 'text-slate-700 hover:text-slate-950 hover:bg-white/60'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Kitap Kağıdı
-              </button>
-              <button
-                onClick={() => setAppTheme('light')}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  appTheme === 'light'
-                    ? 'bg-white text-slate-950 shadow-xs border border-slate-300'
-                    : appTheme === 'sepia'
-                    ? 'text-[#433422] hover:text-[#1f170e] hover:bg-white/50'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Açık
-              </button>
-              <button
-                onClick={() => setAppTheme('dark')}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                <div className={`flex items-center rounded-xl p-1 border ${
                   appTheme === 'dark'
-                    ? 'bg-slate-800 text-white shadow-xs border border-slate-700'
+                    ? 'bg-slate-950 border-slate-800'
                     : appTheme === 'sepia'
-                    ? 'text-[#433422] hover:text-[#1f170e]'
-                    : 'text-slate-700 hover:text-slate-950'
-                }`}
-              >
-                Koyu
-              </button>
-            </div>
-          </div>
+                    ? 'bg-[#e6d7b2] border-[#c8b58c]'
+                    : 'bg-slate-100 border-slate-200'
+                }`}>
+                  <button
+                    onClick={() => setAppTheme('sepia')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      appTheme === 'sepia'
+                        ? 'bg-[#f4ecd8] text-[#2c2216] shadow-xs border border-[#c8b58c]'
+                        : appTheme === 'light'
+                        ? 'text-slate-700 hover:text-slate-950 hover:bg-white/60'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Kitap Kağıdı
+                  </button>
+                  <button
+                    onClick={() => setAppTheme('light')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      appTheme === 'light'
+                        ? 'bg-white text-slate-950 shadow-xs border border-slate-300'
+                        : appTheme === 'sepia'
+                        ? 'text-[#433422] hover:text-[#1f170e] hover:bg-white/50'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Açık
+                  </button>
+                  <button
+                    onClick={() => setAppTheme('dark')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      appTheme === 'dark'
+                        ? 'bg-slate-800 text-white shadow-xs border border-slate-700'
+                        : appTheme === 'sepia'
+                        ? 'text-[#433422] hover:text-[#1f170e]'
+                        : 'text-slate-700 hover:text-slate-950'
+                    }`}
+                  >
+                    Koyu
+                  </button>
+                </div>
+              </div>
 
-          {/* Top Urgent Operational Announcements Banner (Editable by Admins) */}
-          <AnnouncementsBanner
-            announcements={announcements}
-            onSaveAnnouncements={handleSaveAnnouncements}
-            isAdmin={isAdmin}
-            onRequestAdminAuth={() => setShowAdminAuthModal(true)}
-          />
+              {/* Top Urgent Operational Announcements Banner (Editable by Admins) */}
+              <AnnouncementsBanner
+                announcements={announcements}
+                onSaveAnnouncements={handleSaveAnnouncements}
+                isAdmin={isAdmin}
+                onRequestAdminAuth={() => setShowAdminAuthModal(true)}
+              />
 
-          {/* Periodic Notification System (Triggered When Managers Publish Announcements) */}
-          <PendingTrainingsReminder
-            announcements={announcements}
-            currentBranchId={currentBranchId}
-            currentPersonnel={currentPersonnel}
-            appTheme={appTheme}
-            bellTrigger={bellTrigger}
-          />
+              {/* Periodic Notification System (Triggered When Managers Publish Announcements) */}
+              <PendingTrainingsReminder
+                announcements={announcements}
+                currentBranchId={currentBranchId}
+                currentPersonnel={currentPersonnel}
+                appTheme={appTheme}
+                bellTrigger={bellTrigger}
+              />
+            </>
+          )}
           
           {/* VIEW 1: CATALOG */}
           {trainingActiveTab === 'catalog' && (
@@ -619,6 +628,7 @@ export default function App() {
               isAdmin={isAdmin}
               appTheme={appTheme}
               initialMeetingId={new URLSearchParams(window.location.search).get('meeting') || undefined}
+              onLeaveMeeting={() => setTrainingActiveTab('catalog')}
             />
           )}
 

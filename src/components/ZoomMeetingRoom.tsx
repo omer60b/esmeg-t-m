@@ -35,9 +35,12 @@ import {
   Plus, 
   Building2, 
   Radio, 
-  CheckCircle2, 
   AlertCircle,
-  Pin
+  Pin,
+  MoreHorizontal,
+  SwitchCamera,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Branch, MeetingParticipant, MeetingChatMessage, MeetingRoom } from '../types';
 import { 
@@ -72,6 +75,7 @@ interface ZoomMeetingRoomProps {
   isAdmin: boolean;
   appTheme?: 'sepia' | 'light' | 'dark';
   initialMeetingId?: string;
+  onLeaveMeeting?: () => void;
 }
 
 // Google STUN Servers for robust peer-to-peer WebRTC traversal
@@ -93,6 +97,7 @@ interface RemoteVideoPlayerProps {
   isFeatured?: boolean;
   onPin?: () => void;
   isPinned?: boolean;
+  isSpeakerMuted?: boolean;
 }
 
 /**
@@ -103,7 +108,8 @@ const RemoteVideoPlayer: React.FC<RemoteVideoPlayerProps> = ({
   participant,
   stream,
   isSpeaking = false,
-  isFeatured = false
+  isFeatured = false,
+  isSpeakerMuted = false
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -141,12 +147,12 @@ const RemoteVideoPlayer: React.FC<RemoteVideoPlayerProps> = ({
   // Audio mute sync
   useEffect(() => {
     if (audioRef.current) {
-      audioRef.current.muted = !!participant.isAudioMuted;
+      audioRef.current.muted = !!participant.isAudioMuted || isSpeakerMuted;
     }
     if (videoRef.current) {
-      videoRef.current.muted = !!participant.isAudioMuted;
+      videoRef.current.muted = !!participant.isAudioMuted || isSpeakerMuted;
     }
-  }, [participant.isAudioMuted]);
+  }, [participant.isAudioMuted, isSpeakerMuted]);
 
   const showVideo = !participant.isVideoOff && stream && hasLiveVideo;
 
@@ -174,26 +180,16 @@ const RemoteVideoPlayer: React.FC<RemoteVideoPlayerProps> = ({
       {/* When video is off by participant or establishing connection, display avatar */}
       {!showVideo && (
         <div className="flex flex-col items-center justify-center gap-2.5 select-none z-10 px-4 text-center">
-          <div className={`${isFeatured ? 'w-28 sm:w-36 h-28 sm:h-36 text-4xl sm:text-5xl ring-8 ring-white/10' : 'w-18 sm:w-22 h-18 sm:h-22 text-2xl sm:text-3xl ring-4 ring-black/40'} rounded-full bg-gradient-to-br ${participant.avatarColor || getAvatarColor(participant.name)} flex items-center justify-center text-white font-black shadow-2xl`}>
+          <div className={`${isFeatured ? 'w-24 sm:w-36 h-24 sm:h-36 text-3xl sm:text-5xl ring-6 sm:ring-8 ring-white/10' : 'w-14 sm:w-20 h-14 sm:h-20 text-xl sm:text-2xl ring-4 ring-black/40'} rounded-full bg-gradient-to-br ${participant.avatarColor || getAvatarColor(participant.name)} flex items-center justify-center text-white font-black shadow-2xl transition-all`}>
             {getInitials(participant.name)}
           </div>
           <div>
-            <span className={`${isFeatured ? 'text-base sm:text-lg' : 'text-xs sm:text-sm'} font-extrabold text-white block truncate max-w-[220px]`}>
+            <p className="text-sm sm:text-base font-extrabold text-white truncate max-w-[180px] sm:max-w-[220px]">
               {participant.name}
-            </span>
-            <span className="text-[11px] text-slate-400 font-medium block">
+            </p>
+            <p className="text-[11px] text-slate-400 font-medium truncate max-w-[180px]">
               {participant.branchName}
-            </span>
-            {participant.isVideoOff ? (
-              <span className="text-[10px] text-slate-400 bg-black/60 px-2 py-0.5 rounded-full mt-1.5 inline-block border border-white/10">
-                Kamera Kapalı
-              </span>
-            ) : !stream ? (
-              <span className="text-[10px] text-emerald-400 bg-emerald-950/70 border border-emerald-700/60 px-2.5 py-0.5 rounded-full mt-1.5 inline-flex items-center gap-1 animate-pulse">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                Bağlantı Kuruluyor...
-              </span>
-            ) : null}
+            </p>
           </div>
         </div>
       )}
@@ -207,8 +203,25 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   branches,
   isAdmin,
   appTheme = 'sepia',
-  initialMeetingId
+  initialMeetingId,
+  onLeaveMeeting
 }) => {
+  // Mobile device detection
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 768;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Session / Room identifiers
   const [meetingCode, setMeetingCode] = useState<string>(() => {
     // Check URL search param first, then initialMeetingId, then default
@@ -243,9 +256,24 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   const [showMeetingInfoPopover, setShowMeetingInfoPopover] = useState(false);
   const [showReactionsPopover, setShowReactionsPopover] = useState(false);
   const [showWhiteboard, setShowWhiteboard] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'speaker'>('grid');
+
+  // Default viewMode: On mobile phone default to 'speaker' (Zoom Active Speaker screen), on desktop default to 'grid'
+  const [viewMode, setViewMode] = useState<'grid' | 'speaker'>(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      return 'speaker';
+    }
+    return 'grid';
+  });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // Zoom Mobile Specific States
+  const [mobileGridPage, setMobileGridPage] = useState<number>(0);
+  const [isSpeakerMuted, setIsSpeakerMuted] = useState<boolean>(false);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [showMobileMoreSheet, setShowMobileMoreSheet] = useState<boolean>(false);
+  const [pipPosition, setPipPosition] = useState<'bottom-right' | 'top-right' | 'bottom-left' | 'top-left'>('bottom-right');
+  
 
   // Floating reaction badges
   const [floatingReactions, setFloatingReactions] = useState<{ id: string; emoji: string; sender: string; x: number }[]>([]);
@@ -262,6 +290,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
   // Media Stream references
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const localPipVideoRef = useRef<HTMLVideoElement | null>(null);
   const screenShareVideoRef = useRef<HTMLVideoElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -727,7 +756,46 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
       localVideoRef.current.srcObject = localStreamRef.current;
       localVideoRef.current.play().catch(() => {});
     }
+    if (isInMeeting && localPipVideoRef.current && localStreamRef.current) {
+      localPipVideoRef.current.srcObject = localStreamRef.current;
+      localPipVideoRef.current.play().catch(() => {});
+    }
   }, [isInMeeting, viewMode, isVideoOff]);
+
+  // Flip Camera for Mobile
+  const handleFlipCamera = async () => {
+    const nextMode = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(nextMode);
+    if (localStreamRef.current) {
+      try {
+        const vTrack = localStreamRef.current.getVideoTracks()[0];
+        if (vTrack) {
+          vTrack.stop();
+          const newStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: nextMode },
+            audio: false
+          });
+          const newTrack = newStream.getVideoTracks()[0];
+          if (newTrack) {
+            localStreamRef.current.removeTrack(vTrack);
+            localStreamRef.current.addTrack(newTrack);
+            if (localVideoRef.current) {
+              localVideoRef.current.srcObject = localStreamRef.current;
+            }
+            if (localPipVideoRef.current) {
+              localPipVideoRef.current.srcObject = localStreamRef.current;
+            }
+            Object.values(peerConnectionsRef.current).forEach(pc => {
+              const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+              if (sender) sender.replaceTrack(newTrack).catch(() => {});
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Camera flip error:', err);
+      }
+    }
+  };
 
   // Handle Leave Meeting
   const handleLeaveMeeting = async () => {
@@ -756,6 +824,10 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     setIsInMeeting(false);
     setActiveSidePanel('none');
     setShowWhiteboard(false);
+    setShowMobileMoreSheet(false);
+    if (onLeaveMeeting) {
+      onLeaveMeeting();
+    }
   };
 
   // Handle End for All (Host only)
@@ -1282,7 +1354,864 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   }
 
   // =========================================================================
-  // RENDER 2: IN-MEETING ROOM (ZOOM AUTHENTIC EXPERIENCE)
+  // RENDER 2: DEDICATED ZOOM MOBILE ACTIVE SPEAKER EXPERIENCE
+  // =========================================================================
+  if (isMobile) {
+    const mobilePageSize = 4;
+    const totalMobilePages = Math.ceil(allParticipants.length / mobilePageSize) || 1;
+    const currentMobileParticipants = allParticipants.slice(
+      mobileGridPage * mobilePageSize,
+      (mobileGridPage + 1) * mobilePageSize
+    );
+
+    return (
+      <div className="fixed inset-0 z-50 bg-[#121212] text-slate-100 flex flex-col overflow-hidden select-none touch-manipulation">
+        
+        {/* 1. ZOOM MOBILE TOP BAR */}
+        <div className="h-14 bg-[#181818] border-b border-white/10 px-3 flex items-center justify-between z-20 shrink-0">
+          {/* Left: Speaker Mute & Flip Camera */}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setIsSpeakerMuted(!isSpeakerMuted)}
+              className={`p-2 rounded-xl transition cursor-pointer ${
+                isSpeakerMuted ? 'bg-rose-600/20 text-rose-400' : 'text-slate-300 hover:bg-white/10'
+              }`}
+              title={isSpeakerMuted ? 'Hoparlör Kapalı' : 'Hoparlör Açık'}
+            >
+              {isSpeakerMuted ? <VolumeX className="w-5 h-5 text-rose-500" /> : <Volume2 className="w-5 h-5" />}
+            </button>
+            <button
+              type="button"
+              onClick={handleFlipCamera}
+              className="p-2 rounded-xl text-slate-300 hover:bg-white/10 transition cursor-pointer"
+              title="Kamerayı Çevir (Ön / Arka)"
+            >
+              <SwitchCamera className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Center: Meeting Info Shield */}
+          <button
+            type="button"
+            onClick={() => setShowMeetingInfoPopover(true)}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 hover:bg-white/15 text-xs font-bold text-white max-w-[160px] truncate cursor-pointer"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="truncate">{meetingCode}</span>
+          </button>
+
+          {/* Right: Leave Meeting */}
+          <button
+            type="button"
+            onClick={handleLeaveMeeting}
+            className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white text-xs font-black shadow transition cursor-pointer"
+          >
+            Ayrıl
+          </button>
+        </div>
+
+        {/* 2. ZOOM VIEW SWITCHER PILL (Konuşmacı vs Galeri) */}
+        <div className="h-10 bg-[#141414] px-3 flex items-center justify-between border-b border-white/5 z-10 shrink-0">
+          <div className="flex items-center bg-black/60 p-0.5 rounded-lg border border-white/10 text-[11px] font-bold">
+            <button
+              type="button"
+              onClick={() => setViewMode('speaker')}
+              className={`px-2.5 py-1 rounded-md transition ${
+                viewMode === 'speaker' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Konuşmacı
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('grid')}
+              className={`px-2.5 py-1 rounded-md transition ${
+                viewMode === 'grid' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Galeri (2x2)
+            </button>
+          </div>
+
+          {/* Active Speaker ticker */}
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-300 truncate max-w-[160px]">
+            <Radio className="w-3 h-3 text-emerald-400 animate-pulse shrink-0" />
+            <span className="truncate font-semibold">
+              {allParticipants.find(p => p.id === activeSpeakerId)?.name || featuredSpeaker?.name || displayName}
+            </span>
+          </div>
+        </div>
+
+        {/* 3. MOBILE STAGE */}
+        <div className="flex-1 relative overflow-hidden bg-black flex flex-col items-center justify-center p-2">
+          
+          {/* Floating Reaction Emojis */}
+          {floatingReactions.map(r => (
+            <div
+              key={r.id}
+              className="absolute bottom-16 pointer-events-none z-50 flex flex-col items-center animate-bounce"
+              style={{ left: `${r.x}%`, animationDuration: '2.5s' }}
+            >
+              <span className="text-3xl drop-shadow-lg">{r.emoji}</span>
+              <span className="text-[9px] bg-black/80 px-2 py-0.5 rounded-full text-white font-bold mt-1">
+                {r.sender}
+              </span>
+            </div>
+          ))}
+
+          {/* Screen Share View on Mobile */}
+          {isScreenSharing ? (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-black rounded-2xl overflow-hidden relative border border-white/10">
+              <div className="absolute top-2 left-2 bg-emerald-600/90 backdrop-blur-md px-2.5 py-1 rounded-lg text-[10px] font-bold text-white z-10 flex items-center gap-1.5">
+                <MonitorUp className="w-3.5 h-3.5" />
+                <span>Ekran Paylaşımı (Siz)</span>
+              </div>
+              <video
+                ref={screenShareVideoRef}
+                autoPlay
+                playsInline
+                className="w-full h-full object-contain"
+              />
+            </div>
+          ) : showWhiteboard ? (
+            /* Mobile Whiteboard */
+            <div className="w-full h-full bg-white rounded-2xl overflow-hidden relative flex flex-col text-slate-900 border border-slate-700">
+              <div className="h-10 bg-slate-100 border-b border-slate-300 px-2 flex items-center justify-between text-xs">
+                <span className="font-black text-slate-800">Beyaz Tahta</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (!canvasRef.current) return;
+                      const ctx = canvasRef.current.getContext('2d');
+                      if (ctx) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+                    }}
+                    className="p-1 px-2 rounded bg-slate-200 text-slate-700 font-bold text-[10px]"
+                  >
+                    Temizle
+                  </button>
+                  <button
+                    onClick={() => setShowWhiteboard(false)}
+                    className="p-1 rounded bg-slate-300 text-slate-800"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+              <canvas
+                ref={canvasRef}
+                width={360}
+                height={500}
+                className="w-full flex-1 touch-none cursor-crosshair bg-white"
+                onMouseDown={(e) => {
+                  isDrawingRef.current = true;
+                  const canvas = canvasRef.current;
+                  if (!canvas) return;
+                  const ctx = canvas.getContext('2d');
+                  if (!ctx) return;
+                  const rect = canvas.getBoundingClientRect();
+                  const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+                  const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+                  ctx.beginPath();
+                  ctx.moveTo(x, y);
+                  ctx.strokeStyle = penColor;
+                  ctx.lineWidth = 4;
+                  ctx.lineCap = 'round';
+                }}
+                onMouseMove={(e) => {
+                  if (!isDrawingRef.current) return;
+                  const canvas = canvasRef.current;
+                  if (!canvas) return;
+                  const ctx = canvas.getContext('2d');
+                  if (!ctx) return;
+                  const rect = canvas.getBoundingClientRect();
+                  const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+                  const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+                  ctx.lineTo(x, y);
+                  ctx.stroke();
+                }}
+                onMouseUp={() => { isDrawingRef.current = false; }}
+                onTouchStart={(e) => {
+                  isDrawingRef.current = true;
+                  const canvas = canvasRef.current;
+                  if (!canvas) return;
+                  const ctx = canvas.getContext('2d');
+                  if (!ctx) return;
+                  const rect = canvas.getBoundingClientRect();
+                  const touch = e.touches[0];
+                  const x = (touch.clientX - rect.left) * (canvas.width / rect.width);
+                  const y = (touch.clientY - rect.top) * (canvas.height / rect.height);
+                  ctx.beginPath();
+                  ctx.moveTo(x, y);
+                  ctx.strokeStyle = penColor;
+                  ctx.lineWidth = 4;
+                  ctx.lineCap = 'round';
+                }}
+                onTouchMove={(e) => {
+                  if (!isDrawingRef.current) return;
+                  const canvas = canvasRef.current;
+                  if (!canvas) return;
+                  const ctx = canvas.getContext('2d');
+                  if (!ctx) return;
+                  const rect = canvas.getBoundingClientRect();
+                  const touch = e.touches[0];
+                  const x = (touch.clientX - rect.left) * (canvas.width / rect.width);
+                  const y = (touch.clientY - rect.top) * (canvas.height / rect.height);
+                  ctx.lineTo(x, y);
+                  ctx.stroke();
+                }}
+                onTouchEnd={() => { isDrawingRef.current = false; }}
+              />
+            </div>
+          ) : viewMode === 'speaker' && featuredSpeaker ? (
+            /* ============================================================== */
+            /* ZOOM MOBILE ACTIVE SPEAKER SCREEN                              */
+            /* ============================================================== */
+            <div className="relative w-full h-full rounded-2xl overflow-hidden bg-[#181818] border border-white/10 flex items-center justify-center shadow-2xl">
+              
+              {/* Speaker Video / Avatar */}
+              {featuredSpeaker.id === localParticipantId ? (
+                <>
+                  <video
+                    ref={localVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className={`w-full h-full object-cover transform -scale-x-100 ${
+                      isVideoOff ? 'hidden' : 'block'
+                    } ${isVirtualBlur ? 'blur-sm' : ''}`}
+                  />
+                  {isVideoOff && (
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <div className={`w-28 h-28 rounded-full bg-gradient-to-br ${featuredSpeaker.avatarColor || getAvatarColor(featuredSpeaker.name)} flex items-center justify-center text-white text-4xl font-black shadow-2xl ring-8 ring-white/10`}>
+                        {getInitials(featuredSpeaker.name)}
+                      </div>
+                      <div className="text-center">
+                        <p className="text-base font-black text-white">{featuredSpeaker.name}</p>
+                        <p className="text-xs text-slate-400 font-semibold">{featuredSpeaker.branchName}</p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <RemoteVideoPlayer
+                  participant={featuredSpeaker}
+                  stream={remoteStreams[featuredSpeaker.id]}
+                  isSpeaking={!featuredSpeaker.isAudioMuted}
+                  isFeatured={true}
+                  isSpeakerMuted={isSpeakerMuted}
+                />
+              )}
+
+              {/* Glowing speaking ring */}
+              {((featuredSpeaker.id === localParticipantId && localAudioLevel > 20 && !isAudioMuted) || 
+                (featuredSpeaker.id !== localParticipantId && !featuredSpeaker.isAudioMuted)) && (
+                <div className="absolute inset-0 pointer-events-none ring-4 ring-emerald-500 shadow-[0_0_35px_rgba(16,185,129,0.5)] rounded-2xl animate-pulse"></div>
+              )}
+
+              {/* Hand Raised badge */}
+              {featuredSpeaker.isHandRaised && (
+                <div className="absolute top-3 left-3 bg-amber-500 text-slate-950 px-2.5 py-1 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-lg animate-bounce z-10">
+                  <Hand className="w-3.5 h-3.5 fill-current" />
+                  <span>Söz İstiyor</span>
+                </div>
+              )}
+
+              {/* Bottom Left: Authentic Zoom Mobile Name Tag */}
+              <div className="absolute bottom-3 left-3 flex items-center gap-2 bg-black/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/15 text-xs text-white z-10 max-w-[65%]">
+                <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${
+                  featuredSpeaker.isAudioMuted ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white'
+                }`}>
+                  {featuredSpeaker.isAudioMuted ? <MicOff className="w-2.5 h-2.5" /> : <Mic className="w-2.5 h-2.5" />}
+                </div>
+                <span className="font-extrabold text-xs truncate">
+                  {featuredSpeaker.name}
+                </span>
+                {featuredSpeaker.role === 'host' && (
+                  <span className="text-[9px] bg-blue-600 px-1 rounded font-bold shrink-0">Yönetici</span>
+                )}
+              </div>
+
+              {/* FLOATING PICTURE-IN-PICTURE (PIP) SELF-VIEW (ZOOM SIGNATURE) */}
+              {featuredSpeaker.id !== localParticipantId && (
+                <div 
+                  onClick={() => {
+                    setPipPosition(prev => prev === 'bottom-right' ? 'top-right' : 'bottom-right');
+                  }}
+                  className={`absolute ${
+                    pipPosition === 'top-right' ? 'top-3 right-3' : 'bottom-3 right-3'
+                  } w-24 h-36 rounded-xl overflow-hidden shadow-2xl border-2 border-white/30 bg-slate-900 z-20 cursor-pointer transition-all duration-200 active:scale-95`}
+                  title="Siz (Kendi Görüntünüz) — Dokunarak yer değiştirin"
+                >
+                  <video
+                    ref={localPipVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className={`w-full h-full object-cover transform -scale-x-100 ${
+                      isVideoOff ? 'hidden' : 'block'
+                    } ${isVirtualBlur ? 'blur-xs' : ''}`}
+                  />
+                  {isVideoOff && (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 p-1">
+                      <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${getAvatarColor(displayName)} flex items-center justify-center text-white text-xs font-black shadow`}>
+                        {getInitials(displayName)}
+                      </div>
+                      <span className="text-[9px] text-slate-400 mt-1 font-bold">Kamera Kapalı</span>
+                    </div>
+                  )}
+                  {/* Self mic badge */}
+                  <div className="absolute bottom-1 left-1 bg-black/80 px-1 py-0.5 rounded text-[8px] text-white flex items-center gap-0.5">
+                    {isAudioMuted ? <MicOff className="w-2 h-2 text-rose-400" /> : <Mic className="w-2 h-2 text-emerald-400" />}
+                    <span>Siz</span>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          ) : (
+            /* ============================================================== */
+            /* ZOOM MOBILE COMPACT 2x2 GALLERY GRID                           */
+            /* ============================================================== */
+            <div className="w-full h-full flex flex-col justify-between items-center">
+              <div className={`w-full flex-1 grid gap-2 p-1 ${
+                currentMobileParticipants.length === 1 
+                  ? 'grid-cols-1 grid-rows-1' 
+                  : currentMobileParticipants.length === 2 
+                  ? 'grid-cols-1 grid-rows-2' 
+                  : 'grid-cols-2 grid-rows-2'
+              }`}>
+                {currentMobileParticipants.map(p => {
+                  const isLocal = p.id === localParticipantId;
+                  const isSpeaking = (isLocal && localAudioLevel > 20 && !isAudioMuted) || (!isLocal && !p.isAudioMuted);
+                  const isVideoOffState = isLocal ? isVideoOff : p.isVideoOff;
+                  const isAudioMutedState = isLocal ? isAudioMuted : p.isAudioMuted;
+
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => {
+                        setIsPinned(p.id);
+                        setViewMode('speaker');
+                      }}
+                      className={`relative w-full h-full bg-[#1e1e1e] rounded-xl overflow-hidden border flex items-center justify-center cursor-pointer transition ${
+                        isSpeaking 
+                          ? 'border-emerald-500 ring-2 ring-emerald-500/80 shadow-md' 
+                          : 'border-white/10'
+                      }`}
+                    >
+                      {isLocal ? (
+                        <>
+                          <video
+                            ref={localVideoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className={`w-full h-full object-cover transform -scale-x-100 ${
+                              isVideoOffState ? 'hidden' : 'block'
+                            }`}
+                          />
+                          {isVideoOffState && (
+                            <div className="flex flex-col items-center justify-center gap-1 select-none">
+                              <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${p.avatarColor || getAvatarColor(p.name)} flex items-center justify-center text-white text-base font-black shadow-lg`}>
+                                {getInitials(p.name)}
+                              </div>
+                              <span className="text-[10px] font-bold text-slate-300">{p.name}</span>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <RemoteVideoPlayer
+                          participant={p}
+                          stream={remoteStreams[p.id]}
+                          isSpeaking={isSpeaking}
+                          isSpeakerMuted={isSpeakerMuted}
+                        />
+                      )}
+
+                      {/* Small Name badge */}
+                      <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between bg-black/80 backdrop-blur-sm px-2 py-1 rounded-lg text-[10px] text-white">
+                        <span className="font-bold truncate max-w-[80px]">{p.name}</span>
+                        <div className="flex items-center gap-1">
+                          {p.isHandRaised && <Hand className="w-2.5 h-2.5 text-amber-400 fill-current" />}
+                          {isAudioMutedState ? (
+                            <MicOff className="w-3 h-3 text-rose-400 shrink-0" />
+                          ) : (
+                            <Mic className="w-3 h-3 text-emerald-400 shrink-0" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Gallery Page Dots */}
+              {totalMobilePages > 1 && (
+                <div className="h-6 flex items-center justify-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setMobileGridPage(prev => Math.max(0, prev - 1))}
+                    disabled={mobileGridPage === 0}
+                    className="p-1 text-slate-400 disabled:opacity-20"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <div className="flex items-center gap-1.5">
+                    {Array.from({ length: totalMobilePages }).map((_, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setMobileGridPage(idx)}
+                        className={`h-1.5 rounded-full transition-all ${
+                          idx === mobileGridPage ? 'w-4 bg-blue-500' : 'w-1.5 bg-white/30'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setMobileGridPage(prev => Math.min(totalMobilePages - 1, prev + 1))}
+                    disabled={mobileGridPage === totalMobilePages - 1}
+                    className="p-1 text-slate-400 disabled:opacity-20"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+        </div>
+
+        {/* 4. ZOOM MOBILE BOTTOM DOCK (5 SIGNATURE BUTTONS) */}
+        <div className="h-16 bg-[#141414] border-t border-white/10 px-2 flex items-center justify-around z-30 shrink-0">
+          
+          {/* MUTE / UNMUTE */}
+          <button
+            type="button"
+            onClick={toggleAudio}
+            className={`flex flex-col items-center justify-center w-14 h-13 rounded-xl transition cursor-pointer ${
+              isAudioMuted ? 'text-rose-400' : 'text-slate-200'
+            }`}
+          >
+            {isAudioMuted ? (
+              <MicOff className="w-5 h-5 text-rose-500" />
+            ) : (
+              <Mic className="w-5 h-5 text-white" />
+            )}
+            <span className="text-[10px] font-semibold mt-0.5">
+              {isAudioMuted ? 'Sesi Aç' : 'Sesi Kapat'}
+            </span>
+          </button>
+
+          {/* VIDEO */}
+          <button
+            type="button"
+            onClick={toggleVideo}
+            className={`flex flex-col items-center justify-center w-14 h-13 rounded-xl transition cursor-pointer ${
+              isVideoOff ? 'text-rose-400' : 'text-slate-200'
+            }`}
+          >
+            {isVideoOff ? (
+              <VideoOff className="w-5 h-5 text-rose-500" />
+            ) : (
+              <Video className="w-5 h-5 text-white" />
+            )}
+            <span className="text-[10px] font-semibold mt-0.5">
+              {isVideoOff ? 'Videoyu Aç' : 'Durdur'}
+            </span>
+          </button>
+
+          {/* SHARE */}
+          <button
+            type="button"
+            onClick={toggleScreenShare}
+            className={`flex flex-col items-center justify-center w-14 h-13 rounded-xl transition cursor-pointer ${
+              isScreenSharing ? 'text-rose-400' : 'text-emerald-400'
+            }`}
+          >
+            {isScreenSharing ? <MonitorOff className="w-5 h-5" /> : <MonitorUp className="w-5 h-5" />}
+            <span className="text-[10px] font-bold mt-0.5">
+              {isScreenSharing ? 'Durdur' : 'Paylaş'}
+            </span>
+          </button>
+
+          {/* PARTICIPANTS */}
+          <button
+            type="button"
+            onClick={() => setActiveSidePanel('participants')}
+            className="flex flex-col items-center justify-center w-14 h-13 rounded-xl text-slate-200 transition cursor-pointer relative"
+          >
+            <div className="relative">
+              <Users className="w-5 h-5" />
+              <span className="absolute -top-1 -right-2 bg-blue-600 text-[8px] font-black px-1 rounded-full text-white">
+                {allParticipants.length}
+              </span>
+            </div>
+            <span className="text-[10px] font-semibold mt-0.5">Katılımcı</span>
+          </button>
+
+          {/* MORE (...) */}
+          <button
+            type="button"
+            onClick={() => setShowMobileMoreSheet(true)}
+            className="flex flex-col items-center justify-center w-14 h-13 rounded-xl text-slate-200 transition cursor-pointer relative"
+          >
+            <div className="relative">
+              <MoreHorizontal className="w-5 h-5" />
+              {unreadChatCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full animate-ping"></span>
+              )}
+            </div>
+            <span className="text-[10px] font-semibold mt-0.5">Daha Fazla</span>
+          </button>
+
+        </div>
+
+        {/* 5. MOBILE "DAHA FAZLA" ACTION SHEET */}
+        {showMobileMoreSheet && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex flex-col justify-end animate-fadeIn">
+            <div 
+              className="absolute inset-0"
+              onClick={() => setShowMobileMoreSheet(false)}
+            />
+            <div className="relative bg-[#1c1c1c] rounded-t-3xl border-t border-white/10 p-4 space-y-3 z-10 max-h-[80vh] overflow-y-auto">
+              <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-2" />
+              <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                <span className="font-extrabold text-sm text-white">Toplantı Seçenekleri</span>
+                <button
+                  onClick={() => setShowMobileMoreSheet(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Quick Reactions row */}
+              <div className="flex items-center justify-between bg-black/40 p-2.5 rounded-2xl border border-white/5">
+                <span className="text-xs font-bold text-slate-400">Tepki Ver:</span>
+                <div className="flex items-center gap-2">
+                  {['👏', '👍', '❤️', '😂', '🎉'].map(emoji => (
+                    <button
+                      key={emoji}
+                      onClick={() => {
+                        triggerReaction(emoji);
+                        setShowMobileMoreSheet(false);
+                      }}
+                      className="text-2xl p-1 active:scale-125 transition"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action Grid */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSidePanel('chat');
+                    setUnreadChatCount(0);
+                    setShowMobileMoreSheet(false);
+                  }}
+                  className="p-3 bg-white/5 hover:bg-white/10 rounded-xl flex items-center gap-2.5 text-left font-bold"
+                >
+                  <MessageSquare className="w-4 h-4 text-blue-400 shrink-0" />
+                  <div className="truncate">
+                    <span className="block">Sohbet</span>
+                    {unreadChatCount > 0 && (
+                      <span className="text-[10px] text-blue-400">{unreadChatCount} yeni mesaj</span>
+                    )}
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    toggleHandRaise();
+                    setShowMobileMoreSheet(false);
+                  }}
+                  className={`p-3 rounded-xl flex items-center gap-2.5 text-left font-bold transition ${
+                    isHandRaised ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-white/5 hover:bg-white/10'
+                  }`}
+                >
+                  <Hand className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>{isHandRaised ? 'Eli İndir' : 'El Kaldır'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowWhiteboard(!showWhiteboard);
+                    setShowMobileMoreSheet(false);
+                  }}
+                  className="p-3 bg-white/5 hover:bg-white/10 rounded-xl flex items-center gap-2.5 text-left font-bold"
+                >
+                  <PenTool className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Beyaz Tahta</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsVirtualBlur(!isVirtualBlur);
+                    setShowMobileMoreSheet(false);
+                  }}
+                  className={`p-3 rounded-xl flex items-center gap-2.5 text-left font-bold transition ${
+                    isVirtualBlur ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40' : 'bg-white/5 hover:bg-white/10'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <span>Bulanıklaştır</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMeetingInfoPopover(true);
+                    setShowMobileMoreSheet(false);
+                  }}
+                  className="p-3 bg-white/5 hover:bg-white/10 rounded-xl flex items-center gap-2.5 text-left font-bold col-span-2"
+                >
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Toplantı Bilgisi & Davet Linki</span>
+                </button>
+              </div>
+
+              {/* Host actions if admin */}
+              {(isAdmin || meetingRoom?.hostName === displayName) && (
+                <div className="pt-2 border-t border-white/10 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleMuteAll();
+                      setShowMobileMoreSheet(false);
+                    }}
+                    className="flex-1 py-2.5 bg-rose-600/20 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-bold"
+                  >
+                    Herkesi Sessize Al
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleEndForAll();
+                      setShowMobileMoreSheet(false);
+                    }}
+                    className="flex-1 py-2.5 bg-rose-600 text-white rounded-xl text-xs font-bold"
+                  >
+                    Herkes İçin Bitir
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 6. MOBILE FULL-SCREEN MODAL: CHAT */}
+        {activeSidePanel === 'chat' && (
+          <div className="fixed inset-0 z-50 bg-[#141414] flex flex-col animate-slideUp">
+            {/* Header */}
+            <div className="h-14 border-b border-white/10 px-4 flex items-center justify-between bg-[#1a1a1a]">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-blue-400" />
+                <span className="font-extrabold text-white text-sm">Toplantı İçi Sohbet</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveSidePanel('none')}
+                className="p-2 rounded-xl text-slate-400 hover:text-white bg-white/5"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+              {chatMessages.length === 0 ? (
+                <div className="text-center py-16 text-slate-500 text-xs">
+                  <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <span>Henüz mesaj yok. İlk mesajı yazın!</span>
+                </div>
+              ) : (
+                chatMessages.map(msg => (
+                  <div key={msg.id} className="bg-slate-900/90 p-2.5 rounded-xl border border-white/5 space-y-1">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="font-bold text-blue-400 truncate max-w-[180px]">
+                        {msg.senderName} ({msg.senderBranch})
+                      </span>
+                      <span className="text-slate-500">{msg.timestamp}</span>
+                    </div>
+                    <p className="text-xs text-slate-200 leading-relaxed break-words">{msg.text}</p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Input Form */}
+            <form onSubmit={handleSendMessage} className="p-3 border-t border-white/10 bg-[#1a1a1a]">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={chatInputText}
+                  onChange={(e) => setChatInputText(e.target.value)}
+                  placeholder="Mesajınızı yazınız..."
+                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="submit"
+                  disabled={!chatInputText.trim()}
+                  className="px-4 py-2.5 bg-blue-600 disabled:opacity-40 text-white rounded-xl text-xs font-bold"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* 7. MOBILE FULL-SCREEN MODAL: PARTICIPANTS */}
+        {activeSidePanel === 'participants' && (
+          <div className="fixed inset-0 z-50 bg-[#141414] flex flex-col animate-slideUp">
+            {/* Header */}
+            <div className="h-14 border-b border-white/10 px-4 flex items-center justify-between bg-[#1a1a1a]">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-emerald-400" />
+                <span className="font-extrabold text-white text-sm">
+                  Katılımcılar ({allParticipants.length})
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveSidePanel('none')}
+                className="p-2 rounded-xl text-slate-400 hover:text-white bg-white/5"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Controls */}
+            <div className="p-3 border-b border-white/5 space-y-2 bg-[#181818]">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleMuteAll}
+                  className="flex-1 py-2 bg-rose-600/20 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-bold"
+                >
+                  Tümünü Kapat
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUnmuteAll}
+                  className="flex-1 py-2 bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold"
+                >
+                  Tümünü Aç
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={copyMeetingLink}
+                className="w-full py-2 bg-blue-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>{copiedLink ? 'Link Kopyalandı!' : 'Davet Linkini Kopyala'}</span>
+              </button>
+            </div>
+
+            {/* List */}
+            <div className="flex-1 overflow-y-auto divide-y divide-white/5 p-3">
+              {allParticipants.map(p => {
+                const isLocal = p.id === localParticipantId;
+                const isAudioMutedState = isLocal ? isAudioMuted : p.isAudioMuted;
+
+                return (
+                  <div key={p.id} className="py-2.5 px-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5 overflow-hidden">
+                      <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${p.avatarColor || getAvatarColor(p.name)} flex items-center justify-center text-white text-xs font-black shrink-0`}>
+                        {getInitials(p.name)}
+                      </div>
+                      <div className="overflow-hidden">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-white truncate max-w-[140px]">{p.name}</span>
+                          {p.role === 'host' && (
+                            <span className="text-[9px] bg-blue-600/40 text-blue-300 px-1 rounded font-bold">
+                              Yönetici
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400 truncate block">{p.branchName}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-slate-400">
+                      {p.isHandRaised && <Hand className="w-3.5 h-3.5 text-amber-400 fill-current" />}
+                      <button
+                        type="button"
+                        onClick={() => handleToggleParticipantMute(p.id, isAudioMutedState)}
+                        className="p-1.5 rounded-lg hover:bg-white/10"
+                      >
+                        {isAudioMutedState ? (
+                          <MicOff className="w-4 h-4 text-rose-500" />
+                        ) : (
+                          <Mic className="w-4 h-4 text-emerald-400" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 8. MEETING INFO MODAL */}
+        {showMeetingInfoPopover && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-[#1c1c1c] border border-slate-700 rounded-3xl w-full max-w-sm p-5 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                <span className="font-extrabold text-sm text-white flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  Toplantı Detayları
+                </span>
+                <button
+                  onClick={() => setShowMeetingInfoPopover(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Toplantı Konusu:</span>
+                  <span className="font-semibold text-white">{meetingRoom?.title || 'ESME Eğitim ve Koordinasyon'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Oda Kodu:</span>
+                  <span className="font-mono font-black text-emerald-400 text-sm">{meetingCode}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Ev Sahibi:</span>
+                  <span className="font-semibold text-white">{meetingRoom?.hostName || displayName}</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={copyMeetingLink}
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2"
+              >
+                {copiedLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                <span>{copiedLink ? 'Link Kopyalandı!' : 'Davet Linkini Kopyala'}</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // RENDER 3: DESKTOP IN-MEETING ROOM (ZOOM AUTHENTIC DOCK & GRID)
   // =========================================================================
   return (
     <div 
