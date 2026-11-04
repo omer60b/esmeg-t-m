@@ -123,32 +123,49 @@ const RemoteVideoPlayer: React.FC<RemoteVideoPlayerProps> = ({
   const [hasLiveVideo, setHasLiveVideo] = useState(false);
 
   useEffect(() => {
-    if (stream) {
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(() => {});
-      }
-      if (audioRef.current) {
-        audioRef.current.srcObject = stream;
-        audioRef.current.play().catch(() => {});
-      }
-
-      const checkTracks = () => {
-        const vTracks = stream.getVideoTracks();
-        const hasActive = vTracks.length > 0 && vTracks.some(t => t.enabled && t.readyState === 'live');
-        setHasLiveVideo(hasActive);
-      };
-
-      checkTracks();
-      stream.addEventListener('addtrack', checkTracks);
-      stream.addEventListener('removetrack', checkTracks);
-      return () => {
-        stream.removeEventListener('addtrack', checkTracks);
-        stream.removeEventListener('removetrack', checkTracks);
-      };
-    } else {
+    if (!stream) {
       setHasLiveVideo(false);
+      return;
     }
+
+    const videoElement = videoRef.current;
+    const audioElement = audioRef.current;
+    if (videoElement && videoElement.srcObject !== stream) {
+      videoElement.srcObject = stream;
+    }
+    if (audioElement && audioElement.srcObject !== stream) {
+      audioElement.srcObject = stream;
+    }
+
+    const checkTracks = () => {
+      const videoTracks = stream.getVideoTracks();
+      setHasLiveVideo(videoTracks.some(track => track.readyState === 'live'));
+    };
+    const playMedia = () => {
+      checkTracks();
+      videoElement?.play().catch(() => {});
+      audioElement?.play().catch(() => {});
+    };
+
+    checkTracks();
+    videoElement?.addEventListener('loadedmetadata', playMedia);
+    stream.addEventListener('addtrack', checkTracks);
+    stream.addEventListener('removetrack', checkTracks);
+    stream.getVideoTracks().forEach(track => {
+      track.addEventListener('unmute', checkTracks);
+      track.addEventListener('ended', checkTracks);
+    });
+    playMedia();
+
+    return () => {
+      videoElement?.removeEventListener('loadedmetadata', playMedia);
+      stream.removeEventListener('addtrack', checkTracks);
+      stream.removeEventListener('removetrack', checkTracks);
+      stream.getVideoTracks().forEach(track => {
+        track.removeEventListener('unmute', checkTracks);
+        track.removeEventListener('ended', checkTracks);
+      });
+    };
   }, [stream]);
 
   // Audio mute sync
@@ -313,9 +330,12 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
   const peerConnectionsRef = useRef<{ [peerId: string]: RTCPeerConnection }>({});
   const pendingCandidatesRef = useRef<{ [peerId: string]: RTCIceCandidateInit[] }>({});
   const reconnectAttemptsRef = useRef<{ [peerId: string]: number }>({});
+  const makingOfferRef = useRef<{ [peerId: string]: boolean }>({});
+  const ignoreOfferRef = useRef<{ [peerId: string]: boolean }>({});
   const isAudioMutedRef = useRef(isAudioMuted);
   const activeSidePanelRef = useRef(activeSidePanel);
   const [remoteStreams, setRemoteStreams] = useState<{ [peerId: string]: MediaStream }>({});
+  const [peerRevision, setPeerRevision] = useState(0);
 
   useEffect(() => {
     isAudioMutedRef.current = isAudioMuted;
@@ -349,6 +369,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
     const pc = new RTCPeerConnection(RTC_ICE_CONFIG);
     peerConnectionsRef.current[remotePeerId] = pc;
+    ignoreOfferRef.current[remotePeerId] = localParticipantId < remotePeerId;
 
     // Attach local audio and video tracks if available
     if (localStreamRef.current) {
@@ -417,6 +438,12 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
               console.warn('WebRTC reconnect attempt failed:', error);
             }
           }, Math.min(1000 * 2 ** attempt, 8000));
+        } else if (pc.connectionState === 'failed') {
+          pc.close();
+          delete peerConnectionsRef.current[remotePeerId];
+          delete pendingCandidatesRef.current[remotePeerId];
+          delete makingOfferRef.current[remotePeerId];
+          setPeerRevision(previous => previous + 1);
         }
       }
 
@@ -436,6 +463,27 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
         } catch (error) {
           console.warn('ICE restart failed:', error);
         }
+      }
+    };
+
+    pc.onnegotiationneeded = async () => {
+      if (!isInitiator || pc.signalingState !== 'stable' || makingOfferRef.current[remotePeerId]) return;
+      makingOfferRef.current[remotePeerId] = true;
+      try {
+        await pc.setLocalDescription(await pc.createOffer());
+        if (pc.localDescription && meetingCode) {
+          await sendWebRTCSignal(
+            meetingCode,
+            localParticipantId,
+            remotePeerId,
+            'offer',
+            JSON.stringify(pc.localDescription)
+          );
+        }
+      } catch (error) {
+        console.warn('WebRTC negotiation error:', error);
+      } finally {
+        makingOfferRef.current[remotePeerId] = false;
       }
     };
 
@@ -466,6 +514,13 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
       if (type === 'offer') {
         const offerData = JSON.parse(payload);
         const pc = createPeerConnection(senderId, false);
+        const isPolite = localParticipantId < senderId;
+        const offerCollision = makingOfferRef.current[senderId] || pc.signalingState !== 'stable';
+        ignoreOfferRef.current[senderId] = !isPolite && offerCollision;
+        if (ignoreOfferRef.current[senderId]) return;
+        if (offerCollision) {
+          await pc.setLocalDescription({ type: 'rollback' });
+        }
         await pc.setRemoteDescription(new RTCSessionDescription(offerData));
 
         // Flush any candidates received prior to remote description
@@ -501,6 +556,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
       } else if (type === 'candidate') {
         const candidateData = JSON.parse(payload);
         const pc = peerConnectionsRef.current[senderId];
+        if (ignoreOfferRef.current[senderId]) return;
         if (pc && pc.remoteDescription && pc.remoteDescription.type) {
           await pc.addIceCandidate(new RTCIceCandidate(candidateData)).catch(() => {});
         } else {
@@ -729,23 +785,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     remotes.forEach(p => {
       if (!peerConnectionsRef.current[p.id]) {
         const shouldInitiate = localParticipantId > p.id;
-        const pc = createPeerConnection(p.id, shouldInitiate);
-        if (shouldInitiate) {
-          pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true })
-            .then(offer => pc.setLocalDescription(offer))
-            .then(() => {
-              if (pc.localDescription) {
-                sendWebRTCSignal(
-                  meetingCode,
-                  localParticipantId,
-                  p.id,
-                  'offer',
-                  JSON.stringify(pc.localDescription)
-                ).catch(() => {});
-              }
-            })
-            .catch(err => console.warn('WebRTC offer error:', err));
-        }
+        createPeerConnection(p.id, shouldInitiate);
       }
     });
 
@@ -763,7 +803,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
         });
       }
     });
-  }, [participants, isInMeeting, meetingCode, localParticipantId, createPeerConnection]);
+  }, [participants, isInMeeting, meetingCode, localParticipantId, createPeerConnection, peerRevision]);
 
   // Handle Join Meeting (Immediate Optimistic Room Entry)
   const handleJoinMeeting = () => {
