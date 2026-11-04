@@ -27,6 +27,9 @@ class AppErrorBoundary extends React.Component<React.PropsWithChildren, ErrorBou
             <p className="mt-2 text-sm text-slate-300">
               Sayfayı yenileyin. Sorun devam ederse toplantı bağlantısını yeniden açın.
             </p>
+            <p className="mt-3 break-words text-xs text-rose-300/80">
+              {this.state.error.message || 'Bilinmeyen uygulama hatası'}
+            </p>
             <button
               type="button"
               onClick={() => window.location.reload()}
