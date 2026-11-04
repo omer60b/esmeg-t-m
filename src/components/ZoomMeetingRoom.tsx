@@ -785,7 +785,32 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     remotes.forEach(p => {
       if (!peerConnectionsRef.current[p.id]) {
         const shouldInitiate = localParticipantId > p.id;
-        createPeerConnection(p.id, shouldInitiate);
+        const pc = createPeerConnection(p.id, shouldInitiate);
+        // addTrack can fire negotiationneeded before the handler is attached
+        // during peer creation, so explicitly start the first offer here.
+        if (shouldInitiate && pc.signalingState === 'stable' && !makingOfferRef.current[p.id]) {
+          makingOfferRef.current[p.id] = true;
+          pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true })
+            .then(offer => pc.setLocalDescription(offer))
+            .then(() => {
+              if (pc.localDescription) {
+                return sendWebRTCSignal(
+                  meetingCode,
+                  localParticipantId,
+                  p.id,
+                  'offer',
+                  JSON.stringify(pc.localDescription)
+                );
+              }
+              return undefined;
+            })
+            .catch(error => {
+              console.warn('Initial WebRTC offer error:', error);
+            })
+            .finally(() => {
+              makingOfferRef.current[p.id] = false;
+            });
+        }
       }
     });
 
