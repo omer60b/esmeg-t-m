@@ -94,7 +94,12 @@ export async function createOrGetMeetingRoom(
           hostName: hostName || data.hostName,
           title: title || data.title
         };
-        updateDoc(roomRef, { status: 'active', hostName: reactivated.hostName }).catch(() => {});
+        updateDoc(roomRef, { 
+          status: 'active', 
+          endedAt: null,
+          reactivatedAt: Date.now(),
+          hostName: reactivated.hostName 
+        }).catch(() => {});
         return reactivated;
       }
       return {
@@ -242,7 +247,8 @@ export async function purgeStaleAndTestParticipants(meetingId: string): Promise<
     for (const docSnap of snap.docs) {
       const data = docSnap.data();
       const isTest = docSnap.id.startsWith('test_') || (data.name && String(data.name).toLowerCase().includes('test'));
-      const isStale = !data.lastPing || (now - data.lastPing > 20000); // 20 saniyeden eski veya test olanları sil
+      // 120 saniyeden (2 dakika) eski veya test olanları temizle
+      const isStale = !data.lastPing || (now - data.lastPing > 120000);
       if (isTest || isStale) {
         deleteDoc(docSnap.ref).catch(() => {});
       }
@@ -260,21 +266,18 @@ export function subscribeToParticipants(
   const cleanId = (meetingId.trim() || DEFAULT_MEETING_ID).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
   const colRef = collection(db, 'meetings', cleanId, 'participants');
 
-  // Initial purge of old/stale records
-  purgeStaleAndTestParticipants(cleanId);
-
   return onSnapshot(colRef, (snap) => {
     const list: MeetingParticipant[] = [];
     const now = Date.now();
     snap.forEach((docSnap) => {
       const data = docSnap.data() as MeetingParticipant & { lastPing?: number };
       const isTest = docSnap.id.startsWith('test_') || (data.name && String(data.name).toLowerCase().includes('test'));
-      const isStale = !data.lastPing || (now - data.lastPing > 20000);
+      // Güvenli süre: 120 saniyeden eski ise listede gösterme
+      const isStale = data.lastPing && (now - data.lastPing > 120000);
 
-      if (isTest || isStale) {
-        // Oturumunu kapatmış veya test olarak eklenmiş kullanıcıyı anında temizle
+      if (isTest) {
         deleteDoc(docSnap.ref).catch(() => {});
-      } else {
+      } else if (!isStale) {
         list.push(data);
       }
     });
@@ -366,7 +369,8 @@ export async function endMeetingForAll(meetingId: string): Promise<void> {
 
   try {
     await updateDoc(roomRef, {
-      status: 'ended'
+      status: 'ended',
+      endedAt: Date.now()
     });
   } catch (err) {
     console.warn("End meeting error:", err);
@@ -409,7 +413,7 @@ export async function purgeOldWebRTCSignals(meetingId: string): Promise<void> {
   const colRef = collection(db, 'meetings', cleanId, 'signals');
   try {
     const snap = await getDocs(colRef);
-    const expireTime = Date.now() - 30000;
+    const expireTime = Date.now() - 60000;
     for (const docSnap of snap.docs) {
       const data = docSnap.data();
       if (!data.createdAt || data.createdAt < expireTime) {
@@ -426,14 +430,15 @@ export function subscribeToWebRTCSignals(
 ): () => void {
   const cleanId = (meetingId.trim() || DEFAULT_MEETING_ID).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
   const colRef = collection(db, 'meetings', cleanId, 'signals');
-  const startTime = Date.now() - 15000;
+  const processedIds = new Set<string>();
 
   return onSnapshot(colRef, (snap) => {
     snap.docChanges().forEach((change) => {
       if (change.type === 'added') {
         const data = change.doc.data();
-        if (data.receiverId === currentUserId && data.createdAt >= startTime) {
-          // Once delivered to the intended receiver, delete to prevent memory build-up and duplicate delivery
+        if (data.receiverId === currentUserId && !processedIds.has(change.doc.id)) {
+          processedIds.add(change.doc.id);
+          // Delete signal after delivery to keep collection clean
           deleteDoc(change.doc.ref).catch(() => {});
           onSignal({
             id: change.doc.id,
@@ -442,7 +447,7 @@ export function subscribeToWebRTCSignals(
             type: data.type,
             payload: data.payload
           });
-        } else if (Date.now() - (data.createdAt || 0) > 45000) {
+        } else if (Date.now() - (data.createdAt || 0) > 60000) {
           deleteDoc(change.doc.ref).catch(() => {});
         }
       }

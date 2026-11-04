@@ -119,6 +119,7 @@ const RemoteVideoPlayer: React.FC<RemoteVideoPlayerProps> = ({
     if (stream) {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.muted = true; // Video element must ALWAYS be muted to satisfy browser autoplay policy
         videoRef.current.play().catch(() => {});
       }
       if (audioRef.current) {
@@ -135,9 +136,22 @@ const RemoteVideoPlayer: React.FC<RemoteVideoPlayerProps> = ({
       checkTracks();
       stream.addEventListener('addtrack', checkTracks);
       stream.addEventListener('removetrack', checkTracks);
+
+      const vTracks = stream.getVideoTracks();
+      vTracks.forEach(t => {
+        t.addEventListener('mute', checkTracks);
+        t.addEventListener('unmute', checkTracks);
+        t.addEventListener('ended', checkTracks);
+      });
+
       return () => {
         stream.removeEventListener('addtrack', checkTracks);
         stream.removeEventListener('removetrack', checkTracks);
+        vTracks.forEach(t => {
+          t.removeEventListener('mute', checkTracks);
+          t.removeEventListener('unmute', checkTracks);
+          t.removeEventListener('ended', checkTracks);
+        });
       };
     } else {
       setHasLiveVideo(false);
@@ -150,11 +164,11 @@ const RemoteVideoPlayer: React.FC<RemoteVideoPlayerProps> = ({
       audioRef.current.muted = !!participant.isAudioMuted || isSpeakerMuted;
     }
     if (videoRef.current) {
-      videoRef.current.muted = !!participant.isAudioMuted || isSpeakerMuted;
+      videoRef.current.muted = true;
     }
   }, [participant.isAudioMuted, isSpeakerMuted]);
 
-  const showVideo = !participant.isVideoOff && stream && hasLiveVideo;
+  const showVideo = !participant.isVideoOff && !!stream && (hasLiveVideo || (stream.getVideoTracks().length > 0 && stream.getVideoTracks().some(t => t.readyState === 'live')));
 
   return (
     <div className="w-full h-full relative flex items-center justify-center overflow-hidden bg-[#181818]">
@@ -163,15 +177,15 @@ const RemoteVideoPlayer: React.FC<RemoteVideoPlayerProps> = ({
         ref={audioRef}
         autoPlay
         playsInline
-        muted={!!participant.isAudioMuted}
+        muted={!!participant.isAudioMuted || isSpeakerMuted}
       />
 
-      {/* Real Live WebRTC Video Element */}
+      {/* Real Live WebRTC Video Element: Always muted to guarantee zero browser autoplay blocks */}
       <video
         ref={videoRef}
         autoPlay
         playsInline
-        muted={!!participant.isAudioMuted}
+        muted
         className={`w-full h-full object-cover transition-opacity duration-300 ${
           showVideo ? 'opacity-100 block' : 'opacity-0 pointer-events-none absolute'
         }`}
@@ -197,7 +211,7 @@ const RemoteVideoPlayer: React.FC<RemoteVideoPlayerProps> = ({
   );
 };
 
-export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
+const ZoomMeetingRoomInner: React.FC<ZoomMeetingRoomProps> = ({
   currentBranchId,
   currentPersonnel,
   branches,
@@ -318,11 +332,38 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     'p_' + Math.random().toString(36).substring(2, 9)
   ).current;
 
+  const [showLeaveConfirmModal, setShowLeaveConfirmModal] = useState<boolean>(false);
+  const [mediaPermissionError, setMediaPermissionError] = useState<string | null>(null);
+  const isMountedRef = useRef<boolean>(true);
+  const participantJoinTimeRef = useRef<number>(Date.now());
+
   // Attendance log reference for manager reporting
   const attendanceLogIdRef = useRef<string | null>(null);
   const attendanceJoinedAtRef = useRef<string>(new Date().toISOString());
 
-  // WebRTC helper: Create and configure Peer Connection
+  // WebRTC Renegotiation Helper
+  const renegotiatePeer = useCallback(async (remotePeerId: string) => {
+    const pc = peerConnectionsRef.current[remotePeerId];
+    if (!pc || !meetingCode) return;
+    try {
+      if (pc.signalingState !== 'stable') return;
+      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+      await pc.setLocalDescription(offer);
+      if (pc.localDescription) {
+        await sendWebRTCSignal(
+          meetingCode,
+          localParticipantId,
+          remotePeerId,
+          'offer',
+          JSON.stringify(pc.localDescription)
+        );
+      }
+    } catch (err) {
+      console.warn("Renegotiate offer warning:", remotePeerId, err);
+    }
+  }, [meetingCode, localParticipantId]);
+
+  // WebRTC helper: Create and configure Peer Connection with ICE auto-reconnect and track pooling
   const createPeerConnection = useCallback((remotePeerId: string, isInitiator: boolean) => {
     if (peerConnectionsRef.current[remotePeerId]) {
       return peerConnectionsRef.current[remotePeerId];
@@ -354,22 +395,37 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     };
 
     // Receive remote media tracks (Audio and Video)
+    // IMPORTANT: Creates a new MediaStream instance so React updates references and re-binds video elements!
     pc.ontrack = (event) => {
-      const incomingStream = event.streams[0] || new MediaStream([event.track]);
       setRemoteStreams(prev => {
         const existing = prev[remotePeerId];
+        let newStream: MediaStream;
         if (existing) {
-          if (!existing.getTracks().some(t => t.id === event.track.id)) {
-            existing.addTrack(event.track);
+          const tracks = [...existing.getTracks()];
+          if (!tracks.some(t => t.id === event.track.id)) {
+            tracks.push(event.track);
           }
-          return { ...prev, [remotePeerId]: existing };
+          newStream = new MediaStream(tracks);
+        } else if (event.streams && event.streams[0]) {
+          newStream = new MediaStream(event.streams[0].getTracks());
+        } else {
+          newStream = new MediaStream([event.track]);
         }
-        return { ...prev, [remotePeerId]: incomingStream };
+        return { ...prev, [remotePeerId]: newStream };
       });
     };
 
+    // ICE connection auto-reconnect resilience
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+        try {
+          pc.restartIce();
+        } catch {}
+      }
+    };
+
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'closed' || pc.connectionState === 'failed') {
+      if (pc.connectionState === 'closed') {
         setRemoteStreams(prev => {
           const next = { ...prev };
           delete next[remotePeerId];
@@ -381,7 +437,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     return pc;
   }, [meetingCode, localParticipantId]);
 
-  // WebRTC Signal Dispatcher (Offer, Answer, Candidate)
+  // WebRTC Signal Dispatcher (Offer, Answer, Candidate) with Perfect Negotiation
   const handleIncomingSignal = useCallback(async (signal: { senderId: string; receiverId: string; type: string; payload: string }) => {
     const { senderId, type, payload } = signal;
     if (!payload || !meetingCode) return;
@@ -389,10 +445,25 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     try {
       if (type === 'offer') {
         const offerData = JSON.parse(payload);
+        const isPolite = localParticipantId < senderId;
         const pc = createPeerConnection(senderId, false);
-        await pc.setRemoteDescription(new RTCSessionDescription(offerData));
 
-        // Flush any candidates received prior to remote description
+        // Handle glare collision with polite peer pattern
+        const isCollision = pc.signalingState !== 'stable';
+        if (isCollision) {
+          if (!isPolite) {
+            // Impolite peer ignores colliding offer
+            return;
+          }
+          await Promise.all([
+            pc.setLocalDescription({ type: 'rollback' } as any).catch(() => {}),
+            pc.setRemoteDescription(new RTCSessionDescription(offerData))
+          ]);
+        } else {
+          await pc.setRemoteDescription(new RTCSessionDescription(offerData));
+        }
+
+        // Flush any queued candidates
         if (pendingCandidatesRef.current[senderId]) {
           for (const cand of pendingCandidatesRef.current[senderId]) {
             await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
@@ -439,34 +510,56 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     }
   }, [meetingCode, localParticipantId, createPeerConnection]);
 
-  // Initialize camera and microphone in Lobby
+  // Initialize camera and microphone in Lobby with robust fallback
   const initLocalMedia = useCallback(async () => {
     try {
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(t => t.stop());
       }
+      setMediaPermissionError(null);
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-        audio: { echoCancellation: true, noiseSuppression: true }
-      });
+      let stream: MediaStream | null = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          audio: { echoCancellation: true, noiseSuppression: true }
+        });
+      } catch (videoError) {
+        console.warn("Full video+audio getUserMedia failed, attempting audio-only:", videoError);
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true }
+          });
+          setIsVideoOff(true);
+        } catch (audioError) {
+          console.warn("Audio getUserMedia also failed:", audioError);
+          setIsVideoOff(true);
+          setIsAudioMuted(true);
+          setMediaPermissionError("Kamera veya mikrofon izni verilmedi. Diğer katılımcıları dinleyebilir ve sohbeti kullanabilirsiniz.");
+        }
+      }
+
+      if (!stream) return;
 
       localStreamRef.current = stream;
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
 
-      // If peer connections exist, attach or replace tracks
-      Object.values(peerConnectionsRef.current).forEach(pc => {
-        stream.getTracks().forEach(track => {
+      // If peer connections exist, attach or replace tracks and renegotiate
+      Object.entries(peerConnectionsRef.current).forEach(([peerId, pc]) => {
+        stream!.getTracks().forEach(track => {
           const senders = pc.getSenders();
           const existing = senders.find(s => s.track && s.track.kind === track.kind);
           if (existing) {
             existing.replaceTrack(track).catch(() => {});
           } else {
-            try { pc.addTrack(track, stream); } catch {}
+            try { pc.addTrack(track, stream!); } catch {}
           }
         });
+        if (localParticipantId > peerId) {
+          renegotiatePeer(peerId);
+        }
       });
 
       // Web Audio API for speaking detection
@@ -483,6 +576,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
         const checkAudio = () => {
+          if (!isMountedRef.current) return;
           if (!analyserRef.current || isAudioMuted) {
             setLocalAudioLevel(0);
             return;
@@ -506,17 +600,18 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
       }
 
     } catch (err) {
-      console.warn("Camera or microphone permission not granted or unavailable, falling back to simulated audio/video:", err);
-      // Graceful fallback: Video off by default
+      console.warn("initLocalMedia error:", err);
       setIsVideoOff(true);
     }
-  }, [isAudioMuted, localParticipantId]);
+  }, [isAudioMuted, localParticipantId, renegotiatePeer]);
 
   // Initial lobby media boot
   useEffect(() => {
+    isMountedRef.current = true;
     initLocalMedia();
 
     return () => {
+      isMountedRef.current = false;
       if (attendanceLogIdRef.current) {
         updateAttendanceLogOnLeave(attendanceLogIdRef.current, attendanceJoinedAtRef.current).catch(() => {});
       }
@@ -527,7 +622,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
         screenStreamRef.current.getTracks().forEach(t => t.stop());
       }
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        audioContextRef.current.close();
+        audioContextRef.current.close().catch(() => {});
       }
     };
   }, [initLocalMedia]);
@@ -541,16 +636,14 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
     purgeOldWebRTCSignals(meetingCode);
 
     const joinTime = Date.now();
+    participantJoinTimeRef.current = joinTime;
+
     const unsubRoom = subscribeToMeetingRoom(meetingCode, (room) => {
       if (room) {
         setMeetingRoom(room);
-        if (room.status === 'ended') {
-          // If room was ended prior to joining (within 10s of entering), automatically reactivate it
-          if (Date.now() - joinTime < 10000) {
-            createOrGetMeetingRoom(meetingCode, room.title, displayName, selectedBranchId, currentBranch.name);
-          } else {
-            handleLeaveMeeting();
-          }
+        // Only leave if room was ended by host AFTER the participant joined
+        if (room.status === 'ended' && room.endedAt && room.endedAt > joinTime + 3000) {
+          handleLeaveMeeting();
         }
       }
     });
@@ -586,10 +679,18 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
       handleIncomingSignal(signal);
     });
 
-    // Send active presence heartbeat every 6 seconds
+    // Send active presence heartbeat every 8 seconds
     const pingInterval = setInterval(() => {
       pingParticipant(meetingCode, localParticipantId);
-    }, 6000);
+    }, 8000);
+
+    // Visibility change heartbeat (tab returned to foreground on mobile)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        pingParticipant(meetingCode, localParticipantId);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
 
     // Auto-remove participant if browser tab is closed, refreshed, or navigated away
     const handleUnload = () => {
@@ -600,6 +701,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
     return () => {
       clearInterval(pingInterval);
+      document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('beforeunload', handleUnload);
       window.removeEventListener('pagehide', handleUnload);
       leaveMeetingParticipant(meetingCode, localParticipantId);
@@ -1163,6 +1265,23 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
           </div>
         </div>
 
+        {mediaPermissionError && (
+          <div className="w-full max-w-4xl mb-3 p-3 bg-amber-950/70 border border-amber-600/50 rounded-2xl text-amber-300 text-xs flex items-center gap-2.5 shadow-md">
+            <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+            <div className="flex-1">
+              <span className="font-bold">Medya İzni Bildirimi: </span>
+              <span>{mediaPermissionError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={initLocalMedia}
+              className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-[11px] font-bold border border-amber-500/30 cursor-pointer"
+            >
+              Tekrar Dene
+            </button>
+          </div>
+        )}
+
         <div className="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden p-3.5 sm:p-7 flex flex-col md:flex-row gap-4 sm:gap-7 items-stretch">
           
           {/* Left: Camera & Microphone Preview Tile */}
@@ -1429,7 +1548,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
           {/* Right: Leave Meeting */}
           <button
             type="button"
-            onClick={handleLeaveMeeting}
+            onClick={() => setShowLeaveConfirmModal(true)}
             className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white text-xs font-black shadow transition cursor-pointer"
           >
             Ayrıl
@@ -2251,6 +2370,54 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
                 {copiedLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                 <span>{copiedLink ? 'Link Kopyalandı!' : 'Davet Linkini Kopyala'}</span>
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* 9. MOBILE LEAVE CONFIRMATION MODAL */}
+        {showLeaveConfirmModal && (
+          <div 
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowLeaveConfirmModal(false);
+            }}
+          >
+            <div 
+              className="bg-[#1c1c1c] border border-slate-700 rounded-3xl w-full max-w-sm p-5 space-y-4 shadow-2xl text-white"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-600/20 border border-rose-500/30 flex items-center justify-center text-rose-500 shrink-0">
+                  <PhoneOff className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-white">Toplantıdan Ayrıl</h3>
+                  <p className="text-xs text-slate-400">Oturumu sonlandırmak istiyor musunuz?</p>
+                </div>
+              </div>
+              <p className="text-xs text-slate-300">
+                Toplantıdan ayrıldığınızda diğer mağazalar ile olan ses ve görüntü iletişiminiz kesilecektir.
+              </p>
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setShowLeaveConfirmModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowLeaveConfirmModal(false);
+                    handleLeaveMeeting();
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30 transition cursor-pointer"
+                >
+                  Ayrıl
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -3208,7 +3375,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
               </button>
               <button
                 type="button"
-                onClick={handleLeaveMeeting}
+                onClick={() => setShowLeaveConfirmModal(true)}
                 className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer"
               >
                 Ayrıl
@@ -3217,7 +3384,7 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
           ) : (
             <button
               type="button"
-              onClick={handleLeaveMeeting}
+              onClick={() => setShowLeaveConfirmModal(true)}
               className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-900/30 transition cursor-pointer flex items-center gap-1.5"
             >
               <PhoneOff className="w-4 h-4" />
@@ -3228,6 +3395,116 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
 
       </div>
 
+      {/* DESKTOP LEAVE CONFIRMATION MODAL */}
+      {showLeaveConfirmModal && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowLeaveConfirmModal(false);
+          }}
+        >
+          <div 
+            className="bg-[#1c1c1c] border border-slate-700 rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-600/20 border border-rose-500/30 flex items-center justify-center text-rose-500 shrink-0">
+                <PhoneOff className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-white">Toplantıdan Ayrıl</h3>
+                <p className="text-xs text-slate-400">Oturumu sonlandırmak istediğinize emin misiniz?</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-300">
+              Toplantıdan ayrıldığınızda diğer mağazalar ile olan ses ve görüntü iletişiminiz kesilecektir.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setShowLeaveConfirmModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLeaveConfirmModal(false);
+                  handleLeaveMeeting();
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30 transition cursor-pointer"
+              >
+                Ayrıl
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
+  );
+};
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  errorInfo?: string;
+}
+
+/**
+ * Resilient ErrorBoundary that wraps ZoomMeetingRoom to catch runtime stream/render errors
+ * and prevent the White Screen of Death (Beyaz Ekran)
+ */
+class ZoomErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, errorInfo: error?.message || 'Bilinmeyen hata' };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("ZoomErrorBoundary caught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="w-full min-h-[75vh] flex flex-col items-center justify-center p-6 bg-slate-950 text-white rounded-3xl border border-slate-800 text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-500 mx-auto">
+            <AlertCircle className="w-7 h-7" />
+          </div>
+          <div>
+            <h3 className="text-lg font-black text-white">Toplantı Ekranı Korundu</h3>
+            <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+              Görüntü işleme katmanında geçici bir uyuşmazlık algılandı. Beyaz ekran önlendi.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => this.setState({ hasError: false })}
+            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-lg cursor-pointer transition"
+          >
+            Yeniden Bağlan
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = (props) => {
+  return (
+    <ZoomErrorBoundary>
+      <ZoomMeetingRoomInner {...props} />
+    </ZoomErrorBoundary>
   );
 };

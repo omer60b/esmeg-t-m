@@ -689,48 +689,52 @@ export default function App() {
           )}
         </main>
 
-        {/* Corporate Footer */}
-        <footer className="bg-slate-950 text-slate-400 border-t border-slate-800 text-xs py-8 px-4 sm:px-6 lg:px-8 mt-12">
-          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-red-600 flex items-center justify-center text-white font-extrabold text-sm shadow">
-                E
+        {/* Corporate Footer (Hidden during meeting to prevent interference) */}
+        {trainingActiveTab !== 'meeting' && (
+          <footer className="bg-slate-950 text-slate-400 border-t border-slate-800 text-xs py-8 px-4 sm:px-6 lg:px-8 mt-12">
+            <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-red-600 flex items-center justify-center text-white font-extrabold text-sm shadow">
+                  E
+                </div>
+                <div>
+                  <p className="font-bold text-slate-200">
+                    ESME Eğitim, İç Yönergeler Portalı
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    ESME Eğitim, İç Yönergeler Portalı • © {new Date().getFullYear()}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="font-bold text-slate-200">
-                  ESME Eğitim, İç Yönergeler Portalı
-                </p>
-                <p className="text-[11px] text-slate-400">
-                  ESME Eğitim, İç Yönergeler Portalı • © {new Date().getFullYear()}
-                </p>
+
+              <div className="flex items-center gap-4 text-[11px]">
+                <span className="text-slate-400">Aktif Şube: <strong className="text-slate-200">{currentBranch.name}</strong></span>
+                <span className="text-slate-400">Personel: <strong className="text-slate-200">{currentPersonnel}</strong></span>
+                <button
+                  onClick={() => {
+                    if (isAdmin) setIsAdmin(false);
+                    else setShowAdminAuthModal(true);
+                  }}
+                  className="text-amber-400 hover:underline cursor-pointer"
+                >
+                  {isAdmin ? 'Yönetici Modunu Kapat' : 'Yönetici Girişi'}
+                </button>
               </div>
             </div>
+          </footer>
+        )}
 
-            <div className="flex items-center gap-4 text-[11px]">
-              <span className="text-slate-400">Aktif Şube: <strong className="text-slate-200">{currentBranch.name}</strong></span>
-              <span className="text-slate-400">Personel: <strong className="text-slate-200">{currentPersonnel}</strong></span>
-              <button
-                onClick={() => {
-                  if (isAdmin) setIsAdmin(false);
-                  else setShowAdminAuthModal(true);
-                }}
-                className="text-amber-400 hover:underline cursor-pointer"
-              >
-                {isAdmin ? 'Yönetici Modunu Kapat' : 'Yönetici Girişi'}
-              </button>
-            </div>
-          </div>
-        </footer>
-
-        {/* Small Moving AI Bot Robot at Bottom-Right (Reach Managers & Smart AI Assistant) */}
-        <FloatingAIRobotBot
-          trainings={trainings}
-          announcements={announcements}
-          currentBranchId={currentBranchId}
-          currentPersonnel={currentPersonnel}
-          isAdmin={isAdmin}
-          onSelectTraining={handleOpenTrainingDetail}
-        />
+        {/* Small Moving AI Bot Robot at Bottom-Right (Hidden during meeting) */}
+        {trainingActiveTab !== 'meeting' && (
+          <FloatingAIRobotBot
+            trainings={trainings}
+            announcements={announcements}
+            currentBranchId={currentBranchId}
+            currentPersonnel={currentPersonnel}
+            isAdmin={isAdmin}
+            onSelectTraining={handleOpenTrainingDetail}
+          />
+        )}
 
         {/* Detail / Classroom Modal */}
         {selectedTraining && (
