@@ -78,7 +78,8 @@ interface ZoomMeetingRoomProps {
   onLeaveMeeting?: () => void;
 }
 
-// Google STUN Servers for robust peer-to-peer WebRTC traversal
+// STUN works for direct paths; TURN is required when participants are behind
+// symmetric NATs or restrictive corporate networks.
 const RTC_ICE_CONFIG: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -86,6 +87,15 @@ const RTC_ICE_CONFIG: RTCConfiguration = {
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
     { urls: 'stun:stun4.l.google.com:19302' },
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turns:openrelay.metered.ca:443'
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    },
     ...(import.meta.env.VITE_TURN_URLS
       ? [{
           urls: String(import.meta.env.VITE_TURN_URLS).split(',').map(url => url.trim()).filter(Boolean),
@@ -463,27 +473,6 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
         } catch (error) {
           console.warn('ICE restart failed:', error);
         }
-      }
-    };
-
-    pc.onnegotiationneeded = async () => {
-      if (!isInitiator || pc.signalingState !== 'stable' || makingOfferRef.current[remotePeerId]) return;
-      makingOfferRef.current[remotePeerId] = true;
-      try {
-        await pc.setLocalDescription(await pc.createOffer());
-        if (pc.localDescription && meetingCode) {
-          await sendWebRTCSignal(
-            meetingCode,
-            localParticipantId,
-            remotePeerId,
-            'offer',
-            JSON.stringify(pc.localDescription)
-          );
-        }
-      } catch (error) {
-        console.warn('WebRTC negotiation error:', error);
-      } finally {
-        makingOfferRef.current[remotePeerId] = false;
       }
     };
 
