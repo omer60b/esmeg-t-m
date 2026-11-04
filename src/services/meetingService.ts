@@ -231,8 +231,10 @@ export async function pingParticipant(
   const cleanId = (meetingId.trim() || DEFAULT_MEETING_ID).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
   const pRef = doc(db, 'meetings', cleanId, 'participants', participantId);
   try {
-    await updateDoc(pRef, { lastPing: Date.now() });
-  } catch {}
+    await setDoc(pRef, { lastPing: Date.now() }, { merge: true });
+  } catch (err) {
+    console.warn("Participant heartbeat error:", err);
+  }
 }
 
 /**
@@ -384,7 +386,7 @@ export async function sendWebRTCSignal(
   meetingId: string,
   senderId: string,
   receiverId: string,
-  type: 'offer' | 'answer' | 'candidate',
+  type: 'offer' | 'answer' | 'candidate' | 'heartbeat' | 'heartbeat-ack',
   payload: string
 ): Promise<void> {
   const cleanId = (meetingId.trim() || DEFAULT_MEETING_ID).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
@@ -401,7 +403,7 @@ export async function sendWebRTCSignal(
       createdAt: Date.now()
     });
   } catch (err) {
-    // Silent catch
+    console.warn("WebRTC signaling write error:", err);
   }
 }
 
@@ -633,4 +635,3 @@ export async function clearAllAttendanceLogs(): Promise<void> {
     console.warn("Clear attendance logs error:", err);
   }
 }
-

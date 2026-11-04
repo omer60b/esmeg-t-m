@@ -1,7 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { 
-  getFirestore, 
+  getFirestore,
   doc, 
   deleteDoc,
   getDocFromServer 

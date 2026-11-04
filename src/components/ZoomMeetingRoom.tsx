@@ -78,14 +78,30 @@ interface ZoomMeetingRoomProps {
   onLeaveMeeting?: () => void;
 }
 
-// Google STUN Servers for robust peer-to-peer WebRTC traversal
+// Google STUN + OpenRelay TURN servers for robust peer-to-peer WebRTC traversal behind NAT/firewalls
 const RTC_ICE_CONFIG: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' }
+    { urls: 'stun:stun4.l.google.com:19302' },
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turns:openrelay.metered.ca:443'
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    },
+    ...(import.meta.env.VITE_TURN_URLS
+      ? [{
+          urls: String(import.meta.env.VITE_TURN_URLS).split(',').map(url => url.trim()).filter(Boolean),
+          username: import.meta.env.VITE_TURN_USERNAME,
+          credential: import.meta.env.VITE_TURN_CREDENTIAL
+        }]
+      : [])
   ],
   iceCandidatePoolSize: 10
 };
