@@ -168,7 +168,6 @@ export interface MeetingParticipant {
   isScreenSharing: boolean;
   joinedAt: string;
   avatarColor?: string;
-  lastPing?: number;
 }
 
 export interface MeetingChatMessage {
@@ -193,8 +192,6 @@ export interface MeetingRoom {
   whiteboardData?: string;
   allowScreenShare: boolean;
   activeSpeakerId?: string;
-  endedAt?: number | null;
-  reactivatedAt?: number;
 }
 
 export interface MeetingAttendanceRecord {

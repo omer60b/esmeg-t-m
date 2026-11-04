@@ -352,13 +352,12 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
             </button>
 
             {/* Personnel & Branch Switcher Dropdown */}
-            <div className="relative ml-1 shrink-0">
+            <div className="relative ml-1">
               <button
-                type="button"
                 onClick={() => setShowUserDropdown(!showUserDropdown)}
-                className="flex items-center gap-1.5 sm:gap-2 bg-slate-800 hover:bg-slate-700/80 border border-slate-700 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer shrink-0"
+                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700/80 border border-slate-700 px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer"
               >
-                <div className="w-6 h-6 rounded-full bg-red-900/60 border border-red-500/40 flex items-center justify-center text-red-300 font-bold shrink-0">
+                <div className="w-6 h-6 rounded-full bg-red-900/60 border border-red-500/40 flex items-center justify-center text-red-300 font-bold">
                   {currentPersonnel.charAt(0) || 'P'}
                 </div>
                 <div className="text-left hidden sm:block">
@@ -372,7 +371,7 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
               </button>
 
               {showUserDropdown && (
-                <div className="absolute right-0 mt-2 w-72 max-w-[calc(100vw-1.5rem)] bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-3 z-50 animate-in fade-in zoom-in-95 duration-100">
+                <div className="absolute right-0 mt-2 w-72 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-3 z-50 animate-in fade-in zoom-in-95 duration-100">
                   <div className="pb-2 border-b border-slate-800 mb-2">
                     <p className="text-xs font-semibold text-slate-300">Aktif Şube ve Personel Bilgisi</p>
                     <p className="text-[11px] text-slate-400">Sınav ve sertifikalarda bu bilgiler yer alır</p>
@@ -818,19 +817,19 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
           </div>
         </div>
       )}
-      {/* FIXED MOBILE BOTTOM NAVIGATION BAR FOR PHONES (Hidden during meeting to avoid covering Zoom controls) */}
+      {/* FIXED MOBILE BOTTOM NAVIGATION BAR FOR PHONES (Hidden during live meetings so Zoom controls have full screen) */}
       {activeTab !== 'meeting' && (
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 shadow-[0_-4px_25px_rgba(0,0,0,0.5)] px-1 sm:px-2 py-1 flex items-center justify-around safe-area-pb">
-          <button
-            type="button"
-            onClick={() => setActiveTab('catalog')}
-            className={`flex flex-col items-center justify-center py-1 flex-1 min-w-0 transition cursor-pointer ${
-              activeTab === 'catalog' ? 'text-red-500 font-extrabold' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <GraduationCap className={`w-5 h-5 ${activeTab === 'catalog' ? 'text-red-500 scale-110' : ''} transition-transform`} />
-            <span className="text-[10px] mt-0.5 font-medium truncate max-w-full">Eğitimler</span>
-          </button>
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 shadow-[0_-4px_25px_rgba(0,0,0,0.5)] px-2 py-1 flex items-center justify-around safe-area-pb">
+        <button
+          type="button"
+          onClick={() => setActiveTab('catalog')}
+          className={`flex flex-col items-center justify-center py-1 flex-1 transition cursor-pointer ${
+            activeTab === 'catalog' ? 'text-red-500 font-extrabold' : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <GraduationCap className={`w-5 h-5 ${activeTab === 'catalog' ? 'text-red-500 scale-110' : ''} transition-transform`} />
+          <span className="text-[10px] mt-0.5 font-medium">Eğitimler</span>
+        </button>
 
         <button
           type="button"
@@ -883,12 +882,12 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('admin')}
-            className={`flex flex-col items-center justify-center py-1 flex-1 min-w-0 transition cursor-pointer ${
+            className={`flex flex-col items-center justify-center py-1 flex-1 transition cursor-pointer ${
               activeTab === 'admin' ? 'text-red-400 font-extrabold' : 'text-amber-400 hover:text-amber-300'
             }`}
           >
             <Settings className={`w-5 h-5 ${activeTab === 'admin' ? 'text-red-400 scale-110' : ''} transition-transform`} />
-            <span className="text-[10px] mt-0.5 font-medium truncate max-w-full">Yönetici</span>
+            <span className="text-[10px] mt-0.5 font-medium">Yönetici</span>
           </button>
         )}
       </nav>
