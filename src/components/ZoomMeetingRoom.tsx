@@ -144,9 +144,13 @@ const RemoteVideoPlayer: React.FC<RemoteVideoPlayerProps> = ({
       }
 
       const checkTracks = () => {
-        const vTracks = stream.getVideoTracks();
-        const hasActive = vTracks.length > 0 && vTracks.some(t => t.enabled && t.readyState === 'live');
-        setHasLiveVideo(hasActive);
+        try {
+          const vTracks = stream.getVideoTracks();
+          const hasActive = vTracks.length > 0 && vTracks.some(t => t.enabled && t.readyState === 'live');
+          setHasLiveVideo(hasActive);
+        } catch {
+          setHasLiveVideo(false);
+        }
       };
 
       checkTracks();
@@ -177,13 +181,17 @@ const RemoteVideoPlayer: React.FC<RemoteVideoPlayerProps> = ({
   // Audio mute sync
   useEffect(() => {
     if (audioRef.current) {
-      audioRef.current.muted = !!participant.isAudioMuted || isSpeakerMuted;
+      audioRef.current.muted = !!participant?.isAudioMuted || isSpeakerMuted;
     }
     if (videoRef.current) {
       videoRef.current.muted = true;
     }
-  }, [participant.isAudioMuted, isSpeakerMuted]);
+  }, [participant?.isAudioMuted, isSpeakerMuted]);
 
+  if (!participant) return null;
+
+  const safeName = participant.name || 'Katılımcı';
+  const safeBranch = participant.branchName || 'ESME Şube';
   const showVideo = !participant.isVideoOff && !!stream && (hasLiveVideo || (stream.getVideoTracks().length > 0 && stream.getVideoTracks().some(t => t.readyState === 'live')));
 
   return (
@@ -210,15 +218,15 @@ const RemoteVideoPlayer: React.FC<RemoteVideoPlayerProps> = ({
       {/* When video is off by participant or establishing connection, display avatar */}
       {!showVideo && (
         <div className="flex flex-col items-center justify-center gap-2.5 select-none z-10 px-4 text-center">
-          <div className={`${isFeatured ? 'w-24 sm:w-36 h-24 sm:h-36 text-3xl sm:text-5xl ring-6 sm:ring-8 ring-white/10' : 'w-14 sm:w-20 h-14 sm:h-20 text-xl sm:text-2xl ring-4 ring-black/40'} rounded-full bg-gradient-to-br ${participant.avatarColor || getAvatarColor(participant.name)} flex items-center justify-center text-white font-black shadow-2xl transition-all`}>
-            {getInitials(participant.name)}
+          <div className={`${isFeatured ? 'w-24 sm:w-36 h-24 sm:h-36 text-3xl sm:text-5xl ring-6 sm:ring-8 ring-white/10' : 'w-14 sm:w-20 h-14 sm:h-20 text-xl sm:text-2xl ring-4 ring-black/40'} rounded-full bg-gradient-to-br ${participant.avatarColor || getAvatarColor(safeName)} flex items-center justify-center text-white font-black shadow-2xl transition-all`}>
+            {getInitials(safeName)}
           </div>
           <div>
             <p className="text-sm sm:text-base font-extrabold text-white truncate max-w-[180px] sm:max-w-[220px]">
-              {participant.name}
+              {safeName}
             </p>
             <p className="text-[11px] text-slate-400 font-medium truncate max-w-[180px]">
-              {participant.branchName}
+              {safeBranch}
             </p>
           </div>
         </div>
@@ -266,12 +274,16 @@ const ZoomMeetingRoomInner: React.FC<ZoomMeetingRoomProps> = ({
     return fromUrl || initialMeetingId || 'ESME-GENEL-TOPLANTI';
   });
 
-  const currentBranch = branches.find(b => b.id === currentBranchId) || branches[0] || { id: 10, name: 'Güneşli Mağazası', code: 'M10' };
+  const currentBranch = (branches && Array.isArray(branches) && branches.length > 0)
+    ? (branches.find(b => b && b.id === currentBranchId) || branches[0])
+    : { id: 10, name: 'Güneşli Mağazası', code: 'M10', city: 'İstanbul' };
 
   // Lobby vs Active Meeting state
   const [isInMeeting, setIsInMeeting] = useState(false);
-  const [displayName, setDisplayName] = useState<string>(currentPersonnel || `${currentBranch.name} Temsilcisi`);
-  const [selectedBranchId, setSelectedBranchId] = useState<number>(currentBranchId);
+  const [displayName, setDisplayName] = useState<string>(
+    currentPersonnel || `${currentBranch?.name || 'Güneşli Mağazası'} Temsilcisi`
+  );
+  const [selectedBranchId, setSelectedBranchId] = useState<number>(currentBranchId || currentBranch?.id || 10);
   
   // Media states
   const [isAudioMuted, setIsAudioMuted] = useState(false);
@@ -534,6 +546,14 @@ const ZoomMeetingRoomInner: React.FC<ZoomMeetingRoomProps> = ({
       }
       setMediaPermissionError(null);
 
+      // Verify mediaDevices support
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+        setIsVideoOff(true);
+        setIsAudioMuted(true);
+        setMediaPermissionError("Kamera ve mikrofon erişimi bu ortamda kısıtlı. Diğer katılımcıları dinleyebilir ve sohbeti kullanabilirsiniz.");
+        return;
+      }
+
       let stream: MediaStream | null = null;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -578,39 +598,46 @@ const ZoomMeetingRoomInner: React.FC<ZoomMeetingRoomProps> = ({
         }
       });
 
-      // Web Audio API for speaking detection
+      // Web Audio API for speaking detection (throttled to avoid 60fps React render storms)
       try {
         const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        const audioCtx = new AudioContextClass();
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        const source = audioCtx.createMediaStreamSource(stream);
-        source.connect(analyser);
+        if (AudioContextClass) {
+          const audioCtx = new AudioContextClass();
+          const analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 256;
+          const source = audioCtx.createMediaStreamSource(stream);
+          source.connect(analyser);
 
-        audioContextRef.current = audioCtx;
-        analyserRef.current = analyser;
+          audioContextRef.current = audioCtx;
+          analyserRef.current = analyser;
 
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        const checkAudio = () => {
-          if (!isMountedRef.current) return;
-          if (!analyserRef.current || isAudioMuted) {
-            setLocalAudioLevel(0);
-            return;
-          }
-          analyserRef.current.getByteFrequencyData(dataArray);
-          let sum = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            sum += dataArray[i];
-          }
-          const average = sum / dataArray.length;
-          setLocalAudioLevel(average);
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          let lastUpdateTime = 0;
+          const checkAudio = () => {
+            if (!isMountedRef.current) return;
+            if (!analyserRef.current || isAudioMuted) {
+              setLocalAudioLevel(0);
+              return;
+            }
+            analyserRef.current.getByteFrequencyData(dataArray);
+            const now = performance.now();
+            if (now - lastUpdateTime > 120) {
+              let sum = 0;
+              for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+              }
+              const average = sum / dataArray.length;
+              setLocalAudioLevel(Math.round(average));
 
-          if (average > 25) {
-            setActiveSpeakerId(localParticipantId);
-          }
-          requestAnimationFrame(checkAudio);
-        };
-        checkAudio();
+              if (average > 25) {
+                setActiveSpeakerId(localParticipantId);
+              }
+              lastUpdateTime = now;
+            }
+            requestAnimationFrame(checkAudio);
+          };
+          checkAudio();
+        }
       } catch (audioErr) {
         console.warn("Audio meter init error:", audioErr);
       }
@@ -739,10 +766,12 @@ const ZoomMeetingRoomInner: React.FC<ZoomMeetingRoomProps> = ({
   useEffect(() => {
     if (!isInMeeting || !meetingCode) return;
 
-    const remotes = participants.filter(p => 
+    const remotes = (participants || []).filter(p => 
+      p &&
+      p.id &&
       p.id !== localParticipantId && 
-      !p.id.startsWith('test_') && 
-      !p.name.toLowerCase().includes('test')
+      !String(p.id).startsWith('test_') && 
+      !(p.name && String(p.name).toLowerCase().includes('test'))
     );
 
     const remoteIds = new Set(remotes.map(p => p.id));
@@ -1174,26 +1203,34 @@ const ZoomMeetingRoomInner: React.FC<ZoomMeetingRoomProps> = ({
 
   // All participants to render (real connected participants only)
   const allParticipants: MeetingParticipant[] = React.useMemo(() => {
-    const finalBranch = branches.find(b => b.id === selectedBranchId) || currentBranch;
+    const finalBranch = (branches && Array.isArray(branches) && branches.length > 0)
+      ? (branches.find(b => b && b.id === selectedBranchId) || currentBranch)
+      : currentBranch;
+    const safeBranchName = finalBranch?.name || 'ESME Şube';
+    const safeBranchId = finalBranch?.id || 10;
+    const safeName = displayName?.trim() || `${safeBranchName} Temsilcisi`;
+
     const localP: MeetingParticipant = {
       id: localParticipantId,
-      name: `${displayName} (Siz)`,
-      branchName: finalBranch.name,
-      branchId: finalBranch.id,
-      role: isAdmin || meetingRoom?.hostName === displayName ? 'host' : 'participant',
+      name: `${safeName} (Siz)`,
+      branchName: safeBranchName,
+      branchId: safeBranchId,
+      role: isAdmin || meetingRoom?.hostName === safeName ? 'host' : 'participant',
       isAudioMuted,
       isVideoOff,
       isHandRaised,
       isScreenSharing,
       joinedAt: '',
-      avatarColor: getAvatarColor(displayName)
+      avatarColor: getAvatarColor(safeName)
     };
 
     // Only genuine live remote participants: exclude self, test records, and stale users
-    const remotes = participants.filter(p => 
+    const remotes = (participants || []).filter(p => 
+      p &&
+      p.id &&
       p.id !== localParticipantId && 
-      !p.id.startsWith('test_') && 
-      !p.name.toLowerCase().includes('test')
+      !String(p.id).startsWith('test_') && 
+      !(p.name && String(p.name).toLowerCase().includes('test'))
     );
     return [localP, ...remotes];
   }, [
@@ -1211,18 +1248,33 @@ const ZoomMeetingRoomInner: React.FC<ZoomMeetingRoomProps> = ({
     participants
   ]);
 
-  // Active Featured Speaker for Speaker Mode (Tek Ekran Görünümü)
-  const featuredSpeaker = React.useMemo(() => {
+  // Active Featured Speaker for Speaker Mode (Tek Ekran Görünümü) - GUARANTEED NEVER NULL
+  const featuredSpeaker: MeetingParticipant = React.useMemo(() => {
     if (isPinned) {
-      const p = allParticipants.find(item => item.id === isPinned);
+      const p = allParticipants.find(item => item && item.id === isPinned);
       if (p) return p;
     }
     if (activeSpeakerId) {
-      const p = allParticipants.find(item => item.id === activeSpeakerId);
+      const p = allParticipants.find(item => item && item.id === activeSpeakerId);
       if (p) return p;
     }
-    return allParticipants.find(p => !p.isAudioMuted) || allParticipants[0] || null;
-  }, [isPinned, activeSpeakerId, allParticipants]);
+    const speakingRemote = allParticipants.find(p => p && !p.isAudioMuted);
+    if (speakingRemote) return speakingRemote;
+
+    return allParticipants[0] || {
+      id: localParticipantId,
+      name: displayName || 'Katılımcı',
+      branchName: currentBranch?.name || 'Şube',
+      branchId: currentBranch?.id || 10,
+      role: 'participant',
+      isAudioMuted,
+      isVideoOff,
+      isHandRaised: false,
+      isScreenSharing: false,
+      joinedAt: '',
+      avatarColor: getAvatarColor(displayName)
+    };
+  }, [isPinned, activeSpeakerId, allParticipants, localParticipantId, displayName, currentBranch, isAudioMuted, isVideoOff]);
 
   // Toggle Fullscreen
   const toggleFullscreen = () => {
@@ -1458,16 +1510,16 @@ const ZoomMeetingRoomInner: React.FC<ZoomMeetingRoomProps> = ({
               <div>
                 <label className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1 flex items-center justify-between">
                   <span>Mağaza / Birim:</span>
-                  <span className="text-[10px] text-slate-500 font-normal">({branches.length} Mağaza)</span>
+                  <span className="text-[10px] text-slate-500 font-normal">({(branches || []).length} Mağaza)</span>
                 </label>
                 <select
                   value={selectedBranchId}
                   onChange={(e) => setSelectedBranchId(Number(e.target.value))}
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {branches.map(b => (
-                    <option key={b.id} value={b.id}>
-                      {b.name} — {b.city || 'Merkez'} ({b.code})
+                  {(branches || []).map(b => (
+                    <option key={b?.id || Math.random()} value={b?.id}>
+                      {b?.name || 'Mağaza'} — {b?.city || 'Merkez'} ({b?.code || '000'})
                     </option>
                   ))}
                 </select>
@@ -3470,6 +3522,7 @@ interface ErrorBoundaryProps {
 interface ErrorBoundaryState {
   hasError: boolean;
   errorInfo?: string;
+  resetKey: number;
 }
 
 /**
@@ -3479,16 +3532,23 @@ interface ErrorBoundaryState {
 class ZoomErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, resetKey: 0 };
   }
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
     return { hasError: true, errorInfo: error?.message || 'Bilinmeyen hata' };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("ZoomErrorBoundary caught error:", error, errorInfo);
   }
+
+  handleReset = () => {
+    try {
+      window.sessionStorage.removeItem('esme_zoom_session');
+    } catch {}
+    this.setState(prev => ({ hasError: false, errorInfo: undefined, resetKey: prev.resetKey + 1 }));
+  };
 
   render() {
     if (this.state.hasError) {
@@ -3500,20 +3560,35 @@ class ZoomErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundar
           <div>
             <h3 className="text-lg font-black text-white">Toplantı Ekranı Korundu</h3>
             <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-              Görüntü işleme katmanında geçici bir uyuşmazlık algılandı. Beyaz ekran önlendi.
+              Görüntü işleme katmanında geçici bir uyuşmazlık algılandı. Beyaz ekran önlendi ve sistem koruma altına alındı.
             </p>
+            {this.state.errorInfo && (
+              <div className="mt-3 inline-block max-w-md px-3 py-1.5 rounded-lg bg-rose-950/50 border border-rose-800/40 text-[11px] font-mono text-rose-300">
+                Hata Ayrıntısı: {this.state.errorInfo}
+              </div>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={() => this.setState({ hasError: false })}
-            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-lg cursor-pointer transition"
-          >
-            Yeniden Bağlan
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={this.handleReset}
+              className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-lg cursor-pointer transition flex items-center gap-1.5"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>Yeniden Başlat</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition cursor-pointer border border-slate-700"
+            >
+              Sayfayı Yenile
+            </button>
+          </div>
         </div>
       );
     }
-    return this.props.children;
+    return <React.Fragment key={this.state.resetKey}>{this.props.children}</React.Fragment>;
   }
 }
 

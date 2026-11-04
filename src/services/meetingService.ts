@@ -25,7 +25,8 @@ export function generateMeetingCode(): string {
 }
 
 // Generate color for avatar based on name
-export function getAvatarColor(name: string): string {
+export function getAvatarColor(name?: string): string {
+  const safeName = String(name || 'ESME');
   const colors = [
     'from-blue-600 to-indigo-700',
     'from-emerald-600 to-teal-700',
@@ -35,19 +36,22 @@ export function getAvatarColor(name: string): string {
     'from-cyan-600 to-blue-700'
   ];
   let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  for (let i = 0; i < safeName.length; i++) {
+    hash = safeName.charCodeAt(i) + ((hash << 5) - hash);
   }
   const index = Math.abs(hash) % colors.length;
   return colors[index];
 }
 
 // Get initials (e.g. "Ahmet Yılmaz" -> "AY")
-export function getInitials(name: string): string {
-  if (!name) return 'ES';
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+export function getInitials(name?: string): string {
+  if (!name || typeof name !== 'string') return 'ES';
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'ES';
+  if (parts.length === 1) return (parts[0].substring(0, 2) || 'ES').toUpperCase();
+  const first = parts[0]?.[0] || 'E';
+  const last = parts[parts.length - 1]?.[0] || 'S';
+  return (first + last).toUpperCase();
 }
 
 /**
@@ -272,15 +276,30 @@ export function subscribeToParticipants(
     const list: MeetingParticipant[] = [];
     const now = Date.now();
     snap.forEach((docSnap) => {
-      const data = docSnap.data() as MeetingParticipant & { lastPing?: number };
-      const isTest = docSnap.id.startsWith('test_') || (data.name && String(data.name).toLowerCase().includes('test'));
+      const rawData = (docSnap.data() || {}) as Partial<MeetingParticipant & { lastPing?: number }>;
+      const id = String(rawData.id || docSnap.id || `p_${Math.random().toString(36).substring(2, 8)}`);
+      const name = String(rawData.name || 'Katılımcı');
+      const isTest = id.startsWith('test_') || name.toLowerCase().includes('test');
       // Güvenli süre: 120 saniyeden eski ise listede gösterme
-      const isStale = data.lastPing && (now - data.lastPing > 120000);
+      const isStale = rawData.lastPing && (now - rawData.lastPing > 120000);
 
       if (isTest) {
         deleteDoc(docSnap.ref).catch(() => {});
       } else if (!isStale) {
-        list.push(data);
+        list.push({
+          id,
+          name,
+          branchName: String(rawData.branchName || 'ESME Şube'),
+          branchId: Number(rawData.branchId || 0),
+          role: rawData.role === 'host' ? 'host' : 'participant',
+          isAudioMuted: Boolean(rawData.isAudioMuted),
+          isVideoOff: Boolean(rawData.isVideoOff),
+          isHandRaised: Boolean(rawData.isHandRaised),
+          isScreenSharing: Boolean(rawData.isScreenSharing),
+          joinedAt: String(rawData.joinedAt || ''),
+          avatarColor: String(rawData.avatarColor || getAvatarColor(name)),
+          lastPing: Number(rawData.lastPing || Date.now())
+        });
       }
     });
     callback(list);
