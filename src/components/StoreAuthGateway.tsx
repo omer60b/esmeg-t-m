@@ -143,57 +143,66 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
   const isSepia = appTheme === 'sepia';
 
   return (
-    <div className={`min-h-dvh w-full flex flex-col justify-center items-center py-6 px-3 sm:px-6 overflow-y-auto box-border transition-colors duration-200 ${
+    <div className={`min-h-[100dvh] w-full flex flex-col justify-start sm:justify-center items-center py-6 px-3 sm:px-6 overflow-x-hidden overflow-y-auto transition-colors duration-200 ${
       isDark 
         ? 'bg-slate-950 text-slate-100' 
         : isSepia 
         ? 'bg-[#f4ecd8] text-[#2c2216]' 
         : 'bg-slate-100 text-slate-900'
     }`}>
-      <div className="w-full max-w-md mx-auto my-auto">
+      <div className="w-full max-w-md mx-auto my-auto min-w-0">
         
         {/* Brand Header with adapted official logo image */}
         <div className="text-center mb-5 sm:mb-6 flex flex-col items-center">
           <div className="relative mb-3 inline-block group">
             <div className="overflow-hidden rounded-2xl shadow-xl shadow-[#6d071a]/25 border border-[#851025]/40 bg-[#6d071a] p-1.5 transition-transform duration-200 hover:scale-[1.02]">
               <img
-                src="/assets/aistudio/images_5bc49cff.jpg"
+                src="/assets/images/esme_logo.jpg"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (!target.dataset.tried) {
+                    target.dataset.tried = '1';
+                    target.src = '/assets/aistudio/images_5bc49cff.jpg';
+                  }
+                }}
                 alt="ESME - Eviniz İçin Her Şey"
-                className="w-auto h-14 sm:h-20 max-w-[240px] sm:max-w-[340px] object-contain rounded-xl block"
+                className="w-auto h-14 sm:h-20 max-w-[220px] sm:max-w-[320px] object-contain rounded-xl block mx-auto"
                 loading="eager"
               />
             </div>
           </div>
-          <p className="text-xs sm:text-[15px] font-black tracking-wide text-slate-900 dark:text-slate-100 px-3 py-1.5 rounded-xl bg-gradient-to-r from-red-50/90 via-white to-red-50/90 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border border-[#6d071a]/20 dark:border-red-900/50 shadow-sm inline-flex items-center justify-center gap-1.5 sm:gap-2">
-            <span className="w-1.5 h-3.5 sm:h-4 rounded-full bg-[#6d071a] dark:bg-red-500 inline-block"></span>
-            <span className="text-[#6d071a] dark:text-red-400 font-black">ESME</span>
-            <span className="text-slate-800 dark:text-slate-200 font-extrabold truncate">Eğitim, İç Yönergeler Portalı</span>
-          </p>
+          <div className="max-w-full px-2">
+            <p className="text-xs sm:text-[14px] font-black tracking-wide text-slate-900 dark:text-slate-100 px-3 sm:px-4 py-1.5 rounded-xl bg-gradient-to-r from-red-50/90 via-white to-red-50/90 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border border-[#6d071a]/20 dark:border-red-900/50 shadow-sm inline-flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 text-center">
+              <span className="w-1.5 h-3.5 rounded-full bg-[#6d071a] dark:bg-red-500 shrink-0"></span>
+              <span className="text-[#6d071a] dark:text-red-400 font-black">ESME</span>
+              <span className="text-slate-800 dark:text-slate-200 font-extrabold truncate">Eğitim, İç Yönergeler Portalı</span>
+            </p>
+          </div>
         </div>
 
         {/* Login Box */}
-        <div className={`rounded-2xl sm:rounded-3xl border shadow-xl sm:shadow-2xl p-4 sm:p-8 transition-colors ${
+        <div className={`rounded-2xl sm:rounded-3xl border shadow-xl sm:shadow-2xl p-4 sm:p-7 transition-colors min-w-0 ${
           isDark 
             ? 'bg-slate-900 border-slate-800' 
             : isSepia 
             ? 'bg-[#fbf4e4] border-[#d8c59e]' 
             : 'bg-white border-slate-200'
         }`}>
-          <div className="border-b pb-4 mb-5 border-slate-200 dark:border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-red-600/10 text-red-600 dark:text-red-400 flex items-center justify-center font-bold">
-                <Building2 className="w-5 h-5" />
+          <div className="border-b pb-3.5 mb-4 sm:mb-5 border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-red-600/10 text-red-600 dark:text-red-400 flex items-center justify-center font-bold shrink-0">
+                <Building2 className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
-              <div>
-                <h2 className="text-base font-extrabold">Mağaza Girişi</h2>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              <div className="min-w-0">
+                <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white truncate">Mağaza Girişi</h2>
+                <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 truncate">
                   Mağazanız ve şifrenizle sistemi açınız
                 </p>
               </div>
             </div>
 
-            <div className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-red-50 text-red-700 dark:bg-red-950/80 dark:text-red-300 border border-red-300/50">
-              <ShieldCheck className="w-3.5 h-3.5 text-red-600" />
+            <div className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-lg bg-red-50 text-red-700 dark:bg-red-950/80 dark:text-red-300 border border-red-300/50 shrink-0">
+              <ShieldCheck className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-red-600" />
               <span>Güvenli Giriş</span>
             </div>
           </div>
@@ -229,7 +238,7 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
                   setError(null);
                   setSuccessNotice(null);
                 }}
-                className={`w-full rounded-xl p-3 text-xs font-bold border transition focus:outline-none focus:ring-2 focus:ring-red-500 ${
+                className={`w-full rounded-xl p-3 text-sm sm:text-xs font-bold border transition focus:outline-none focus:ring-2 focus:ring-red-500 max-w-full ${
                   isDark 
                     ? 'bg-slate-800 border-slate-700 text-white' 
                     : isSepia 
@@ -256,7 +265,7 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
                 value={personnelName}
                 onChange={(e) => setPersonnelName(e.target.value)}
                 placeholder="Örn: Ahmet Yılmaz veya Şube Sorumlusu"
-                className={`w-full rounded-xl p-3 text-xs font-semibold border transition focus:outline-none focus:ring-2 focus:ring-red-500 ${
+                className={`w-full rounded-xl p-3 text-sm sm:text-xs font-semibold border transition focus:outline-none focus:ring-2 focus:ring-red-500 ${
                   isDark 
                     ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-500' 
                     : isSepia 
@@ -300,8 +309,7 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
                   placeholder="Mağaza giriş şifresini giriniz"
                   maxLength={20}
                   autoComplete="current-password"
-                  autoFocus
-                  className={`w-full rounded-xl p-3 pr-10 text-xs font-bold border transition focus:outline-none focus:ring-2 focus:ring-red-500 tracking-wider ${
+                  className={`w-full rounded-xl p-3 pr-10 text-sm sm:text-xs font-bold border transition focus:outline-none focus:ring-2 focus:ring-red-500 tracking-wider ${
                     isDark 
                       ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-500' 
                       : isSepia 
@@ -339,7 +347,7 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
           </form>
 
           {/* Footer Options */}
-          <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <div className="mt-5 sm:mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
             <button
               type="button"
               onClick={() => {
@@ -355,7 +363,7 @@ export const StoreAuthGateway: React.FC<StoreAuthGatewayProps> = ({
             <button
               type="button"
               onClick={onOpenAdminAuth}
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer ml-auto sm:ml-0"
             >
               <ShieldCheck className="w-4 h-4" />
               <span>Yönetici Girişi</span>
