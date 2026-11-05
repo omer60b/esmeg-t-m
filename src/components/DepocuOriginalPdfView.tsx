@@ -4,18 +4,7 @@ import {
   Download, 
   Printer, 
   ExternalLink, 
-  Eye, 
-  ZoomIn, 
-  ZoomOut, 
-  Sparkles, 
-  ShieldAlert, 
-  CheckCircle2, 
-  AlertTriangle,
-  Layers,
-  ChevronDown,
-  Building2,
-  Calendar,
-  UserCheck
+  Eye 
 } from 'lucide-react';
 
 interface DepocuOriginalPdfViewProps {
@@ -28,7 +17,6 @@ export const DepocuOriginalPdfView: React.FC<DepocuOriginalPdfViewProps> = ({
 }) => {
   const [activeMode, setActiveMode] = useState<'embed' | 'document'>('embed');
   const [selectedPage, setSelectedPage] = useState<number>(1);
-  const [zoomLevel, setZoomLevel] = useState<number>(100);
 
   const handlePrint = () => {
     window.print();

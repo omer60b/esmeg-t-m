@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Lock, X, LogIn, AlertCircle } from 'lucide-react';
+import { ShieldCheck, X, LogIn, AlertCircle } from 'lucide-react';
 
 export interface AdminUserSession {
   username: string;
@@ -35,7 +35,9 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
     try {
       const raw = localStorage.getItem('esme_admin_passwords');
       if (raw) masterPasswords = { ...masterPasswords, ...JSON.parse(raw) };
-    } catch {}
+    } catch (err) {
+      /* Fallback to default passwords if storage read fails */
+    }
 
     const obasPass = masterPasswords['O.BAS'] || '1864';
     const tcesurPass = masterPasswords['T.CESUR'] || '9084';
@@ -50,7 +52,9 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
       };
       try {
         localStorage.setItem('esme_current_admin', JSON.stringify(session));
-      } catch {}
+      } catch (err) {
+        /* Storage may be restricted in private browsing */
+      }
       setError(null);
       onSuccess(session);
       onClose();
@@ -67,7 +71,9 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
       };
       try {
         localStorage.setItem('esme_current_admin', JSON.stringify(session));
-      } catch {}
+      } catch (err) {
+        /* Storage may be restricted in private browsing */
+      }
       setError(null);
       onSuccess(session);
       onClose();
@@ -96,7 +102,9 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
           return;
         }
       }
-    } catch {}
+    } catch (err) {
+      /* Fallback if custom admins storage is unavailable */
+    }
 
     // Fallback if password matches master keys without typing exact username
     if (p === obasPass || p === '1864') {
@@ -108,7 +116,9 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
       };
       try {
         localStorage.setItem('esme_current_admin', JSON.stringify(session));
-      } catch {}
+      } catch (err) {
+        /* Storage may be restricted in private browsing */
+      }
       setError(null);
       onSuccess(session);
       onClose();

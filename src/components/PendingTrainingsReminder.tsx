@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { TrainingAnnouncement } from '../types';
 import { officialEsmeBranches } from '../mockData';
 import {
-  Bell,
   Megaphone,
   AlertTriangle,
   CheckCircle2,
@@ -28,7 +27,9 @@ function getAcknowledgedMap(): Record<string, boolean> {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') return parsed;
     }
-  } catch {}
+  } catch (err) {
+    /* Fallback if local storage read fails */
+  }
   return {};
 }
 
@@ -37,7 +38,9 @@ function saveAcknowledgedKey(versionKey: string) {
     const current = getAcknowledgedMap();
     current[versionKey] = true;
     localStorage.setItem(ACK_STORAGE_KEY, JSON.stringify(current));
-  } catch {}
+  } catch (err) {
+    /* Storage save handled gracefully */
+  }
 }
 
 export const PendingTrainingsReminder: React.FC<PendingTrainingsReminderProps> = ({

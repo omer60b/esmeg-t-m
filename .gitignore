@@ -10,3 +10,4 @@ coverage/
 .aistudio/
 .firebase/
 bun.lock
+public/assets/aistudio/

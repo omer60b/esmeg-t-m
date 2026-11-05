@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   TrainingDocument, 
   TrainingCategory, 
@@ -65,7 +65,9 @@ export default function App() {
       const validTabs = ['catalog', 'ebook', 'video', 'meeting', 'leaderboard', 'admin'];
       if (savedTab && validTabs.includes(savedTab)) return savedTab;
       if (savedAdmin) return 'admin';
-    } catch {}
+    } catch (err) {
+      /* Fallback to default tab if URL or storage read fails */
+    }
     return 'catalog';
   });
   const [selectedCategory, setSelectedCategory] = useState<'all' | TrainingCategory>('all');
@@ -79,7 +81,8 @@ export default function App() {
         return saved;
       }
       return 'sepia';
-    } catch {
+    } catch (err) {
+      /* Fallback to sepia if storage is restricted */
       return 'sepia';
     }
   });
@@ -90,14 +93,18 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem('esme_active_tab', trainingActiveTab);
-    } catch {}
+    } catch (err) {
+      /* Storage sync handled gracefully */
+    }
   }, [trainingActiveTab]);
 
   // Sync theme classes on <html> element for high-contrast readability across all modals & pages
   useEffect(() => {
     try {
       localStorage.setItem('esme_app_theme_v2', appTheme);
-    } catch {}
+    } catch (err) {
+      /* Storage sync handled gracefully */
+    }
     const root = document.documentElement;
     root.classList.remove('dark', 'theme-light', 'theme-sepia');
     if (appTheme === 'dark') {
@@ -114,7 +121,8 @@ export default function App() {
     try {
       const stored = localStorage.getItem('esme_active_branch_id');
       return stored ? Number(stored) : 10; // Güneşli Mağaza default
-    } catch {
+    } catch (err) {
+      /* Fallback default branch */
       return 10;
     }
   });
@@ -123,7 +131,8 @@ export default function App() {
     try {
       const stored = localStorage.getItem('esme_active_personnel_name');
       return stored || 'Şube Sorumlusu';
-    } catch {
+    } catch (err) {
+      /* Fallback default personnel */
       return 'Şube Sorumlusu';
     }
   });
@@ -132,7 +141,8 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState<boolean>(() => {
     try {
       return localStorage.getItem('esme_is_admin_mode') === 'true';
-    } catch {
+    } catch (err) {
+      /* Default to non-admin */
       return false;
     }
   });
@@ -147,13 +157,16 @@ export default function App() {
           setTrainingActiveTab('catalog');
         }
       }
-    } catch {}
+    } catch (err) {
+      /* Admin mode storage sync handled gracefully */
+    }
   }, [isAdmin, trainingActiveTab]);
 
   const [isStoreAuthenticated, setIsStoreAuthenticated] = useState<boolean>(() => {
     try {
       return localStorage.getItem('esme_store_authenticated') === 'true';
-    } catch {
+    } catch (err) {
+      /* Default to unauthenticated */
       return false;
     }
   });
@@ -214,7 +227,9 @@ export default function App() {
     try {
       localStorage.setItem('esme_active_branch_id', String(currentBranchId));
       localStorage.setItem('esme_active_personnel_name', currentPersonnel);
-    } catch {}
+    } catch (err) {
+      /* Context storage sync handled gracefully */
+    }
   }, [currentBranchId, currentPersonnel]);
 
   const currentBranch = branches.find(b => b.id === currentBranchId) || branches[0] || officialEsmeBranches[0];
@@ -232,7 +247,9 @@ export default function App() {
       localStorage.setItem('esme_active_branch_id', String(branchId));
       localStorage.setItem('esme_active_personnel_name', personnel);
       localStorage.setItem('esme_active_tab', 'catalog');
-    } catch {}
+    } catch (err) {
+      /* Login session storage sync handled gracefully */
+    }
   };
 
   const handleStoreLogout = () => {
@@ -241,7 +258,9 @@ export default function App() {
     try {
       localStorage.removeItem('esme_store_authenticated');
       localStorage.setItem('esme_active_tab', 'catalog');
-    } catch {}
+    } catch (err) {
+      /* Logout storage sync handled gracefully */
+    }
   };
 
   // Branch CRUD Handlers for Administrator
@@ -378,7 +397,8 @@ export default function App() {
   const urlMeetingId = useMemo(() => {
     try {
       return new URLSearchParams(window.location.search).get('meeting') || null;
-    } catch {
+    } catch (err) {
+      /* Safe URLSearchParams parse fallback */
       return null;
     }
   }, []);

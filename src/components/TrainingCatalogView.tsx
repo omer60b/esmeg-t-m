@@ -6,21 +6,13 @@ import {
   TrainingCompletion 
 } from '../types';
 import { 
-  GraduationCap, 
   BookOpen, 
   Video, 
   FileText, 
   CheckCircle2, 
   AlertTriangle, 
-  ChevronRight, 
-  Building2, 
   ShieldAlert, 
-  Sparkles, 
-  FileDown, 
   Clock, 
-  Search,
-  ExternalLink,
-  Layers,
   Award
 } from 'lucide-react';
 import { isYouTubeUrl } from '../utils/videoUtils';
@@ -129,6 +121,12 @@ export const TrainingCatalogView: React.FC<TrainingCatalogViewProps> = ({
           >
             Depocu Eğitim ({depocuCount})
           </button>
+
+          {currentPersonnel && (
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 hidden xl:inline px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+              Personel: <strong className="text-slate-800 dark:text-slate-200">{currentPersonnel}</strong>
+            </span>
+          )}
         </div>
 
         {/* Priority & Video Filter Pills */}
@@ -172,9 +170,9 @@ export const TrainingCatalogView: React.FC<TrainingCatalogViewProps> = ({
             onChange={(e) => setOnlyCompleted(e.target.value as any)}
             className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg px-2 py-1.5 text-xs focus:ring-1 focus:ring-red-500"
           >
-            <option value="all">Tüm Durumlar</option>
-            <option value="completed">Tamamlananlar</option>
-            <option value="pending">Henüz İmzalanmayanlar</option>
+            <option value="all">Tüm Durumlar ({trainings.length})</option>
+            <option value="completed">Tamamlanan ({completedCount})</option>
+            <option value="pending">Henüz İmzalanmayan ({trainings.length - completedCount})</option>
           </select>
         </div>
 
@@ -342,7 +340,13 @@ export const TrainingCatalogView: React.FC<TrainingCatalogViewProps> = ({
                     ) : (
                       <>
                         <button
-                          onClick={() => onSelectTraining(training, 'content')}
+                          onClick={() => {
+                            if (onOpenEBook) {
+                              onOpenEBook(training.id);
+                            } else {
+                              onSelectTraining(training, 'content');
+                            }
+                          }}
                           className="w-full bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition shadow cursor-pointer"
                         >
                           <BookOpen className="w-3.5 h-3.5" /> Eğitimi Oku

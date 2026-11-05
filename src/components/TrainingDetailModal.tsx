@@ -25,20 +25,13 @@ import {
   RotateCw, 
   Upload, 
   Award, 
-  HelpCircle,
   ExternalLink,
   ChevronLeft,
   ChevronRight,
-  Maximize2,
   Printer,
   Eye,
   Presentation,
-  Building2,
   Sparkles,
-  QrCode,
-  ShieldCheck,
-  Calendar,
-  UserCheck,
   Youtube,
   Link as LinkIcon,
   Trash2
@@ -84,7 +77,6 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
 
   // PDF Viewer Mode: 'digital' (A4 formal interactive reader) vs 'embedded' (raw browser embed)
   const [pdfViewMode, setPdfViewMode] = useState<'digital' | 'embedded'>('digital');
-  const [pdfZoom, setPdfZoom] = useState<number>(100);
 
   // Video state
   const [videoSrc, setVideoSrc] = useState<string>(training.videoUrl || '');
@@ -1124,7 +1116,6 @@ export const TrainingDetailModal: React.FC<TrainingDetailModalProps> = ({
                 <div className="space-y-4">
                   {randomizedQuestions.map((q, qIndex) => {
                     const selected = selectedAnswers[q.id];
-                    const isAnswered = selected !== undefined;
                     const isCorrect = selected === q.correctOptionIndex;
 
                     return (

@@ -7,16 +7,8 @@ import {
   Search, 
   Download, 
   FileText, 
-  Maximize2, 
-  Sun, 
-  Moon, 
-  Type, 
-  Bookmark, 
-  CheckCircle2, 
   ExternalLink,
-  ShieldAlert,
-  Layers,
-  Share2
+  Layers
 } from 'lucide-react';
 
 interface EBookReaderProps {
@@ -89,13 +81,6 @@ export const EBookReader: React.FC<EBookReaderProps> = ({
     const q = searchTerm.toLowerCase();
     return t.title.toLowerCase().includes(q) || t.docNo.toLowerCase().includes(q) || t.summary.toLowerCase().includes(q);
   });
-
-  // Reading Theme styles
-  const themeStyles = {
-    light: 'bg-white text-slate-900 border-slate-200',
-    dark: 'bg-slate-900 text-slate-100 border-slate-800',
-    sepia: 'bg-[#fbf0d9] text-[#433422] border-[#e8d5b5]'
-  };
 
   const fontStyles = {
     normal: 'text-sm leading-relaxed',

@@ -9,17 +9,10 @@ import {
   Pause, 
   FileText, 
   Download, 
-  Printer, 
-  Layers, 
   Sparkles, 
   ShieldAlert, 
-  CheckCircle2, 
-  AlertTriangle, 
-  Info,
-  Clock,
   Presentation,
-  BookOpen,
-  Eye
+  BookOpen
 } from 'lucide-react';
 import { DepocuOriginalPdfView } from './DepocuOriginalPdfView';
 
@@ -83,10 +76,6 @@ export const SlidePresentationViewer: React.FC<SlidePresentationViewerProps> = (
     }
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   return (
     <div 
       ref={containerRef}
@@ -123,7 +112,10 @@ export const SlidePresentationViewer: React.FC<SlidePresentationViewerProps> = (
           </button>
 
           <button
-            onClick={() => setViewMode('pdf')}
+            onClick={() => {
+              setViewMode('pdf');
+              if (onOpenPdf) onOpenPdf();
+            }}
             className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
               viewMode === 'pdf'
                 ? 'bg-red-600 text-white shadow-sm'

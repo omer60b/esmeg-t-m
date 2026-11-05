@@ -61,7 +61,9 @@ function saveBranchesToStorage(branches: Branch[], notify = true): void {
     if (branchChannel) {
       try {
         branchChannel.postMessage({ type: 'BRANCHES_UPDATED', branches });
-      } catch {}
+      } catch {
+        /* Broadcast channel send fallback handled */
+      }
     }
   }
 }

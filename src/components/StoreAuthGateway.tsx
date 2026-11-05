@@ -11,8 +11,7 @@ import {
   Key,
   CheckCircle2,
   X,
-  Save,
-  Video
+  Save
 } from 'lucide-react';
 import { Branch } from '../types';
 import { getStoredBranches, updateBranchPassword } from '../services/branchStorage';

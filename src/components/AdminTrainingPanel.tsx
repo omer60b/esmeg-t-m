@@ -29,7 +29,6 @@ import {
   Video, 
   FileText, 
   Award, 
-  Download, 
   CheckCircle2, 
   AlertTriangle, 
   ShieldAlert, 
@@ -39,7 +38,6 @@ import {
   X,
   Save,
   Layers,
-  Sparkles,
   Users,
   ShieldCheck,
   UserPlus,
@@ -53,12 +51,9 @@ import {
   MapPin,
   Store,
   Youtube,
-  ExternalLink,
   Smartphone,
   Laptop,
-  Radio,
-  Clock,
-  Calendar
+  Radio
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -158,7 +153,9 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     try {
       const raw = localStorage.getItem('esme_current_admin');
       if (raw) return JSON.parse(raw);
-    } catch {}
+    } catch (err) {
+      /* Fallback to super admin if local storage is unparseable */
+    }
     return {
       username: 'O.BAS',
       name: 'O.BAŞ (Genel Yönetici)',
@@ -172,7 +169,8 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     try {
       const raw = localStorage.getItem('esme_custom_admins');
       return raw ? JSON.parse(raw) : [];
-    } catch {
+    } catch (err) {
+      /* Fallback to empty list */
       return [];
     }
   });
@@ -182,7 +180,8 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
     try {
       const raw = localStorage.getItem('esme_admin_passwords');
       return raw ? JSON.parse(raw) : { 'O.BAS': '1864', 'T.CESUR': '9084' };
-    } catch {
+    } catch (err) {
+      /* Fallback to default passwords */
       return { 'O.BAS': '1864', 'T.CESUR': '9084' };
     }
   });
@@ -939,6 +938,14 @@ export const AdminTrainingPanel: React.FC<AdminTrainingPanelProps> = ({
           >
             <Plus className="w-4 h-4" />
             <span>Yeni Eğitim Ekle</span>
+          </button>
+          <button
+            onClick={() => onClose()}
+            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-2 border border-slate-700 transition cursor-pointer"
+            title="Katalog Görünümüne Dön"
+          >
+            <X className="w-4 h-4" />
+            <span>Kapat</span>
           </button>
         </div>
       </div>

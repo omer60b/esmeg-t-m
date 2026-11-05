@@ -1,0 +1,16 @@
+version = 1
+
+[[analyzers]]
+name = "javascript"
+enabled = true
+
+  [analyzers.meta]
+  environment = ["nodejs", "browser"]
+  plugins = ["react"]
+
+exclude_patterns = [
+  "node_modules/**",
+  "dist/**",
+  "build/**",
+  "public/assets/**"
+]

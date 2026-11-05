@@ -40,14 +40,18 @@ function getDeletedIds(): Set<string> {
       const arr = JSON.parse(raw);
       if (Array.isArray(arr)) return new Set(arr);
     }
-  } catch {}
+  } catch {
+    /* LocalStorage read fallback handled */
+  }
   return new Set();
 }
 
 function saveDeletedIds(ids: Set<string>): void {
   try {
     localStorage.setItem(STORAGE_DELETED_IDS_KEY, JSON.stringify(Array.from(ids)));
-  } catch {}
+  } catch {
+    /* LocalStorage write fallback handled */
+  }
 }
 
 export function isLegacySampleVideo(url?: string | null): boolean {
@@ -78,7 +82,9 @@ function restoreChapterFromFirestore(ch: any) {
         headers: copy.tableData.headers || [],
         rows: JSON.parse(copy.tableData.rowsJson)
       };
-    } catch {}
+    } catch {
+      /* Fallback if JSON parse fails */
+    }
   }
   return copy;
 }
@@ -418,7 +424,9 @@ export async function resetTrainingsToDefault(): Promise<TrainingDocument[]> {
     try {
       const snap = await getDocs(TRAININGS_COLLECTION);
       await Promise.allSettled(snap.docs.map(d => deleteDoc(doc(db, 'trainings', d.id))));
-    } catch {}
+    } catch {
+      /* Fallback if collection query or clear fails */
+    }
 
     const now = new Date().toISOString();
     await Promise.allSettled([

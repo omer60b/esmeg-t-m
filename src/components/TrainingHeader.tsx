@@ -7,7 +7,6 @@ import {
   Search, 
   LogOut, 
   LogIn, 
-  FileCheck2,
   Trophy, 
   Bell, 
   Key, 
@@ -140,7 +139,9 @@ export const TrainingHeader: React.FC<TrainingHeaderProps> = ({
     try {
       localStorage.setItem('esme_active_branch_id', String(targetBranch.id));
       localStorage.setItem('esme_store_authenticated', 'true');
-    } catch {}
+    } catch (err) {
+      /* Storage update handled gracefully */
+    }
 
     setBranchSwitchSuccess(`"${targetBranch.name}" mağazasına başarıyla geçiş yapıldı!`);
     setTimeout(() => {

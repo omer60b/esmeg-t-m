@@ -7,12 +7,11 @@ import {
   onSnapshot, 
   updateDoc, 
   deleteDoc,
-  serverTimestamp,
   query,
   orderBy,
   limit
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from './firebaseService';
+import { db } from './firebaseService';
 import { MeetingRoom, MeetingParticipant, MeetingChatMessage, MeetingAttendanceRecord } from '../types';
 
 export const DEFAULT_MEETING_ID = 'esme-genel-toplanti';
@@ -103,7 +102,9 @@ export async function createOrGetMeetingRoom(
           endedAt: null,
           reactivatedAt: Date.now(),
           hostName: reactivated.hostName 
-        }).catch(() => {});
+        }).catch(() => {
+          /* Safe reactivation update */
+        });
         return reactivated;
       }
       return {
@@ -201,7 +202,9 @@ export async function setAllParticipantsAudioMuted(
   try {
     const snap = await getDocs(colRef);
     for (const docSnap of snap.docs) {
-      updateDoc(docSnap.ref, { isAudioMuted: muted }).catch(() => {});
+      updateDoc(docSnap.ref, { isAudioMuted: muted }).catch(() => {
+        /* Safe participant mute update */
+      });
     }
   } catch (err) {
     console.warn("Set all audio muted error:", err);
@@ -256,10 +259,14 @@ export async function purgeStaleAndTestParticipants(meetingId: string): Promise<
       // 120 saniyeden (2 dakika) eski veya test olanları temizle
       const isStale = !data.lastPing || (now - data.lastPing > 120000);
       if (isTest || isStale) {
-        deleteDoc(docSnap.ref).catch(() => {});
+        deleteDoc(docSnap.ref).catch(() => {
+          /* Stale participant removal handled gracefully */
+        });
       }
     }
-  } catch {}
+  } catch {
+    /* Safe catch for stale participants query */
+  }
 }
 
 /**
@@ -284,7 +291,9 @@ export function subscribeToParticipants(
       const isStale = rawData.lastPing && (now - rawData.lastPing > 120000);
 
       if (isTest) {
-        deleteDoc(docSnap.ref).catch(() => {});
+        deleteDoc(docSnap.ref).catch(() => {
+          /* Test participant cleanup ignore */
+        });
       } else if (!isStale) {
         list.push({
           id,
@@ -438,10 +447,14 @@ export async function purgeOldWebRTCSignals(meetingId: string): Promise<void> {
     for (const docSnap of snap.docs) {
       const data = docSnap.data();
       if (!data.createdAt || data.createdAt < expireTime) {
-        deleteDoc(docSnap.ref).catch(() => {});
+        deleteDoc(docSnap.ref).catch(() => {
+          /* Old signal deletion handled gracefully */
+        });
       }
     }
-  } catch {}
+  } catch {
+    /* Signal purge query handled gracefully */
+  }
 }
 
 export function subscribeToWebRTCSignals(
@@ -460,7 +473,9 @@ export function subscribeToWebRTCSignals(
         if (data.receiverId === currentUserId && !processedIds.has(change.doc.id)) {
           processedIds.add(change.doc.id);
           // Delete signal after delivery to keep collection clean
-          deleteDoc(change.doc.ref).catch(() => {});
+          deleteDoc(change.doc.ref).catch(() => {
+            /* Processed signal cleanup ignore */
+          });
           onSignal({
             id: change.doc.id,
             senderId: data.senderId,
@@ -469,7 +484,9 @@ export function subscribeToWebRTCSignals(
             payload: data.payload
           });
         } else if (Date.now() - (data.createdAt || 0) > 60000) {
-          deleteDoc(change.doc.ref).catch(() => {});
+          deleteDoc(change.doc.ref).catch(() => {
+            /* Expired signal cleanup ignore */
+          });
         }
       }
     });
@@ -531,7 +548,9 @@ export async function recordAttendanceLog(
     const list: MeetingAttendanceRecord[] = raw ? JSON.parse(raw) : [];
     list.unshift(record);
     localStorage.setItem(ATTENDANCE_STORAGE_KEY, JSON.stringify(list.slice(0, 500)));
-  } catch {}
+  } catch {
+    /* LocalStorage attendance log write fallback handled */
+  }
 
   // Firestore update
   try {
@@ -572,7 +591,9 @@ export async function updateAttendanceLogOnLeave(
         localStorage.setItem(ATTENDANCE_STORAGE_KEY, JSON.stringify(list));
       }
     }
-  } catch {}
+  } catch {
+    /* LocalStorage attendance update fallback handled */
+  }
 
   // Update Firestore
   try {
@@ -599,7 +620,9 @@ export function subscribeToAttendanceLogs(
     if (raw) {
       callback(JSON.parse(raw));
     }
-  } catch {}
+  } catch {
+    /* LocalStorage read fallback handled */
+  }
 
   const colRef = collection(db, 'meeting_attendance_logs');
   return onSnapshot(colRef, (snap) => {
@@ -624,7 +647,9 @@ export function subscribeToAttendanceLogs(
           new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime()
         );
       }
-    } catch {}
+    } catch {
+      /* LocalStorage merge fallback handled */
+    }
 
     callback(combined);
   }, (err) => {
@@ -632,7 +657,9 @@ export function subscribeToAttendanceLogs(
     try {
       const raw = localStorage.getItem(ATTENDANCE_STORAGE_KEY);
       if (raw) callback(JSON.parse(raw));
-    } catch {}
+    } catch {
+      /* LocalStorage error fallback handled */
+    }
   });
 }
 
@@ -642,13 +669,17 @@ export function subscribeToAttendanceLogs(
 export async function clearAllAttendanceLogs(): Promise<void> {
   try {
     localStorage.removeItem(ATTENDANCE_STORAGE_KEY);
-  } catch {}
+  } catch {
+    /* LocalStorage clear fallback handled */
+  }
 
   try {
     const colRef = collection(db, 'meeting_attendance_logs');
     const snap = await getDocs(colRef);
     for (const d of snap.docs) {
-      deleteDoc(d.ref).catch(() => {});
+      deleteDoc(d.ref).catch(() => {
+        /* Clear attendance log entry ignore */
+      });
     }
   } catch (err) {
     console.warn("Clear attendance logs error:", err);

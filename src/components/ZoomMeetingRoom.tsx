@@ -4,17 +4,15 @@ import {
   ChevronLeft, 
   Copy, 
   Check, 
-  Users, 
   AlertCircle, 
   RefreshCw, 
-  PhoneOff,
-  Building2,
-  User,
-  Mic,
-  MicOff,
-  LayoutGrid,
-  Volume2,
-  ShieldCheck
+  PhoneOff, 
+  Building2, 
+  User, 
+  Mic, 
+  LayoutGrid, 
+  Volume2, 
+  ShieldCheck 
 } from 'lucide-react';
 import { Branch } from '../types';
 import { recordAttendanceLog, updateAttendanceLogOnLeave } from '../services/meetingService';
@@ -41,10 +39,7 @@ interface ErrorBoundaryState {
 }
 
 class MeetingErrorBoundary extends React.Component<React.PropsWithChildren<{ onReset?: () => void }>, ErrorBoundaryState> {
-  constructor(props: React.PropsWithChildren<{ onReset?: () => void }>) {
-    super(props);
-    this.state = { hasError: false };
-  }
+  state: ErrorBoundaryState = { hasError: false };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, errorInfo: error.message };
@@ -169,7 +164,9 @@ const ZoomMeetingRoomCore: React.FC<ZoomMeetingRoomProps> = ({
       if (count !== null && count !== undefined) {
         setParticipantCount(`${count} katılımcı`);
       }
-    } catch (_) {}
+    } catch (err) {
+      /* Jitsi participant count read may be deferred during room transition */
+    }
   }, []);
 
   // Clean exit and leave
@@ -182,13 +179,23 @@ const ZoomMeetingRoomCore: React.FC<ZoomMeetingRoomProps> = ({
 
     // Attendance logout
     if (attendanceLogIdRef.current) {
-      updateAttendanceLogOnLeave(attendanceLogIdRef.current, attendanceJoinedAtRef.current).catch(() => {});
+      updateAttendanceLogOnLeave(attendanceLogIdRef.current, attendanceJoinedAtRef.current).catch(() => {
+        /* Attendance leave update handled gracefully */
+      });
       attendanceLogIdRef.current = null;
     }
 
     if (jitsiApiRef.current) {
-      try { jitsiApiRef.current.executeCommand('hangup'); } catch (_) {}
-      try { jitsiApiRef.current.dispose(); } catch (_) {}
+      try { 
+        jitsiApiRef.current.executeCommand('hangup'); 
+      } catch {
+        /* Safe hangup notice */
+      }
+      try { 
+        jitsiApiRef.current.dispose(); 
+      } catch {
+        /* Safe dispose notice */
+      }
       jitsiApiRef.current = null;
     }
 
@@ -221,15 +228,21 @@ const ZoomMeetingRoomCore: React.FC<ZoomMeetingRoomProps> = ({
       if (AudioCtx) {
         const ctx = new AudioCtx();
         if (ctx.state === 'suspended') {
-          ctx.resume().catch(() => {});
+          ctx.resume().catch(() => {
+            /* AudioContext resume handled gracefully */
+          });
         }
       }
-    } catch (_) {}
+    } catch {
+      /* AudioContext may not be available on all devices */
+    }
 
     if (jitsiApiRef.current) {
       try {
         jitsiApiRef.current.executeCommand('unmuteEveryone');
-      } catch (_) {}
+      } catch (err) {
+        /* Safe unmute command notice */
+      }
     }
   }, []);
 
@@ -237,7 +250,7 @@ const ZoomMeetingRoomCore: React.FC<ZoomMeetingRoomProps> = ({
   const joinMeeting = async () => {
     const cleanRoomId = roomId.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
     if (!cleanRoomId) {
-      alert('Lütfen geçerli bir Oda ID girin.');
+      setErrorMessage('Lütfen geçerli bir Oda ID girin.');
       return;
     }
 
@@ -408,7 +421,9 @@ const ZoomMeetingRoomCore: React.FC<ZoomMeetingRoomProps> = ({
         if (iframe) {
           applyIframePermissions(iframe);
         }
-      } catch (_) {}
+      } catch (err) {
+        /* Iframe permissions delegation handled gracefully */
+      }
 
       jitsiApiRef.current = api;
 
@@ -420,7 +435,9 @@ const ZoomMeetingRoomCore: React.FC<ZoomMeetingRoomProps> = ({
         // 1. Force Zoom-style 4x4 Tile View
         try {
           api.executeCommand('setTileView', true);
-        } catch (_) {}
+        } catch (err) {
+          /* Tile view toggle handled gracefully */
+        }
 
         // 2. Guarantee microphone is unmuted
         try {
@@ -428,8 +445,12 @@ const ZoomMeetingRoomCore: React.FC<ZoomMeetingRoomProps> = ({
             if (muted) {
               api.executeCommand('toggleAudio');
             }
-          }).catch(() => {});
-        } catch (_) {}
+          }).catch(() => {
+            /* Audio query handled gracefully */
+          });
+        } catch {
+          /* Audio check handled gracefully */
+        }
       });
 
       api.addEventListener('participantJoined', updateParticipants);
@@ -465,7 +486,9 @@ const ZoomMeetingRoomCore: React.FC<ZoomMeetingRoomProps> = ({
         `ESME Eğitim • ${cleanRoomId}`
       ).then(logId => {
         attendanceLogIdRef.current = logId;
-      }).catch(() => {});
+      }).catch(() => {
+        /* Attendance record handled gracefully */
+      });
 
     } catch (err: any) {
       console.error('Jitsi start error:', err);
@@ -506,7 +529,9 @@ const ZoomMeetingRoomCore: React.FC<ZoomMeetingRoomProps> = ({
     if (!jitsiApiRef.current) return;
     try {
       jitsiApiRef.current.executeCommand('toggleTileView');
-    } catch (_) {}
+    } catch (err) {
+      /* Safe tile view command notice */
+    }
   };
 
   // Toggle Microphone
@@ -514,7 +539,9 @@ const ZoomMeetingRoomCore: React.FC<ZoomMeetingRoomProps> = ({
     if (!jitsiApiRef.current) return;
     try {
       jitsiApiRef.current.executeCommand('toggleAudio');
-    } catch (_) {}
+    } catch (err) {
+      /* Safe audio command notice */
+    }
   };
 
   // Toggle Camera
@@ -522,7 +549,9 @@ const ZoomMeetingRoomCore: React.FC<ZoomMeetingRoomProps> = ({
     if (!jitsiApiRef.current) return;
     try {
       jitsiApiRef.current.executeCommand('toggleVideo');
-    } catch (_) {}
+    } catch (err) {
+      /* Safe video command notice */
+    }
   };
 
   // Quick sound test & unlock
@@ -539,7 +568,11 @@ const ZoomMeetingRoomCore: React.FC<ZoomMeetingRoomProps> = ({
         mutationObserverRef.current.disconnect();
       }
       if (jitsiApiRef.current) {
-        try { jitsiApiRef.current.dispose(); } catch (_) {}
+        try { 
+          jitsiApiRef.current.dispose(); 
+        } catch (err) {
+          /* Safe dispose on unmount notice */
+        }
         jitsiApiRef.current = null;
       }
     };
