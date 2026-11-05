@@ -206,6 +206,10 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
           email: '',
         },
         configOverwrite: {
+          p2p: {
+            enabled: false // Force Jitsi Videobridge (SFU) so firewalls and mobile NAT never block video streams
+          },
+          channelLastN: -1, // Do not limit video feeds; show everyone's camera simultaneously
           startWithAudioMuted: false,
           startWithVideoMuted: false,
           prejoinPageEnabled: false,
@@ -213,9 +217,15 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
           enableWelcomePage: false,
           requireDisplayName: false,
           disableInviteFunctions: true,
+          enableLayerSuspension: false, // Prevent Jitsi from suspending remote video tracks
+          defaultRemoteDisplayName: 'Katılımcı',
           resolution: 720,
           constraints: {
-            video: { aspectRatio: 16 / 9, height: { ideal: 720, max: 1080, min: 240 } }
+            video: { 
+              aspectRatio: 16 / 9, 
+              height: { ideal: 720, max: 1080, min: 240 },
+              width: { ideal: 1280, max: 1920, min: 320 }
+            }
           },
           toolbarButtons: [
             'microphone', 'camera', 'desktop',
@@ -232,8 +242,18 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
           MOBILE_APP_PROMO: false,
           DISABLE_JOIN_LEAVE_NOTIFICATIONS: true,
           TOOLBAR_ALWAYS_VISIBLE: false,
+          TILE_VIEW_MAX_COLUMNS: 4,
         },
       });
+
+      // Guarantee browser iframe permissions for camera, microphone and autoplay
+      try {
+        const iframe = api.getIFrame ? api.getIFrame() : null;
+        if (iframe) {
+          iframe.allow = "camera *; microphone *; display-capture *; autoplay *; clipboard-write *; screen-wake-lock *; fullscreen *";
+          iframe.setAttribute("allow", "camera *; microphone *; display-capture *; autoplay *; clipboard-write *; screen-wake-lock *; fullscreen *");
+        }
+      } catch (_) {}
 
       jitsiApiRef.current = api;
 
@@ -463,13 +483,6 @@ export const ZoomMeetingRoom: React.FC<ZoomMeetingRoomProps> = ({
                 </button>
               </div>
 
-              {/* Test Hint Box */}
-              <div className="p-3 bg-blue-950/40 border border-blue-900/60 rounded-2xl text-[12px] text-blue-200 leading-relaxed flex items-start gap-2.5">
-                <Sparkles className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="text-blue-100">Test İpucu:</strong> Bu sayfayı iki farklı pencerede (biri normal, biri gizli mod) açıp aynı Oda ID'sini girerek iki farklı temsilci gibi karşılıklı kamera/mikrofon testi yapabilirsiniz.
-                </div>
-              </div>
 
             </div>
           </div>
