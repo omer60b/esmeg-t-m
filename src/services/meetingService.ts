@@ -25,7 +25,8 @@ export function generateMeetingCode(): string {
 }
 
 // Generate color for avatar based on name
-export function getAvatarColor(name: string): string {
+export function getAvatarColor(name?: string): string {
+  const safeName = String(name || 'ESME');
   const colors = [
     'from-blue-600 to-indigo-700',
     'from-emerald-600 to-teal-700',
@@ -35,19 +36,22 @@ export function getAvatarColor(name: string): string {
     'from-cyan-600 to-blue-700'
   ];
   let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  for (let i = 0; i < safeName.length; i++) {
+    hash = safeName.charCodeAt(i) + ((hash << 5) - hash);
   }
   const index = Math.abs(hash) % colors.length;
   return colors[index];
 }
 
 // Get initials (e.g. "Ahmet Yılmaz" -> "AY")
-export function getInitials(name: string): string {
-  if (!name) return 'ES';
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+export function getInitials(name?: string): string {
+  if (!name || typeof name !== 'string') return 'ES';
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'ES';
+  if (parts.length === 1) return (parts[0].substring(0, 2) || 'ES').toUpperCase();
+  const first = parts[0]?.[0] || 'E';
+  const last = parts[parts.length - 1]?.[0] || 'S';
+  return (first + last).toUpperCase();
 }
 
 /**
@@ -94,7 +98,12 @@ export async function createOrGetMeetingRoom(
           hostName: hostName || data.hostName,
           title: title || data.title
         };
-        updateDoc(roomRef, { status: 'active', hostName: reactivated.hostName }).catch(() => {});
+        updateDoc(roomRef, { 
+          status: 'active', 
+          endedAt: null,
+          reactivatedAt: Date.now(),
+          hostName: reactivated.hostName 
+        }).catch(() => {});
         return reactivated;
       }
       return {
@@ -226,8 +235,10 @@ export async function pingParticipant(
   const cleanId = (meetingId.trim() || DEFAULT_MEETING_ID).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
   const pRef = doc(db, 'meetings', cleanId, 'participants', participantId);
   try {
-    await updateDoc(pRef, { lastPing: Date.now() });
-  } catch {}
+    await setDoc(pRef, { lastPing: Date.now() }, { merge: true });
+  } catch (err) {
+    console.warn("Participant heartbeat error:", err);
+  }
 }
 
 /**
@@ -242,7 +253,8 @@ export async function purgeStaleAndTestParticipants(meetingId: string): Promise<
     for (const docSnap of snap.docs) {
       const data = docSnap.data();
       const isTest = docSnap.id.startsWith('test_') || (data.name && String(data.name).toLowerCase().includes('test'));
-      const isStale = !data.lastPing || (now - data.lastPing > 20000); // 20 saniyeden eski veya test olanları sil
+      // 120 saniyeden (2 dakika) eski veya test olanları temizle
+      const isStale = !data.lastPing || (now - data.lastPing > 120000);
       if (isTest || isStale) {
         deleteDoc(docSnap.ref).catch(() => {});
       }
@@ -260,22 +272,34 @@ export function subscribeToParticipants(
   const cleanId = (meetingId.trim() || DEFAULT_MEETING_ID).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
   const colRef = collection(db, 'meetings', cleanId, 'participants');
 
-  // Initial purge of old/stale records
-  purgeStaleAndTestParticipants(cleanId);
-
   return onSnapshot(colRef, (snap) => {
     const list: MeetingParticipant[] = [];
     const now = Date.now();
     snap.forEach((docSnap) => {
-      const data = docSnap.data() as MeetingParticipant & { lastPing?: number };
-      const isTest = docSnap.id.startsWith('test_') || (data.name && String(data.name).toLowerCase().includes('test'));
-      const isStale = !data.lastPing || (now - data.lastPing > 20000);
+      const rawData = (docSnap.data() || {}) as Partial<MeetingParticipant & { lastPing?: number }>;
+      const id = String(rawData.id || docSnap.id || `p_${Math.random().toString(36).substring(2, 8)}`);
+      const name = String(rawData.name || 'Katılımcı');
+      const isTest = id.startsWith('test_') || name.toLowerCase().includes('test');
+      // Güvenli süre: 120 saniyeden eski ise listede gösterme
+      const isStale = rawData.lastPing && (now - rawData.lastPing > 120000);
 
-      if (isTest || isStale) {
-        // Oturumunu kapatmış veya test olarak eklenmiş kullanıcıyı anında temizle
+      if (isTest) {
         deleteDoc(docSnap.ref).catch(() => {});
-      } else {
-        list.push(data);
+      } else if (!isStale) {
+        list.push({
+          id,
+          name,
+          branchName: String(rawData.branchName || 'ESME Şube'),
+          branchId: Number(rawData.branchId || 0),
+          role: rawData.role === 'host' ? 'host' : 'participant',
+          isAudioMuted: Boolean(rawData.isAudioMuted),
+          isVideoOff: Boolean(rawData.isVideoOff),
+          isHandRaised: Boolean(rawData.isHandRaised),
+          isScreenSharing: Boolean(rawData.isScreenSharing),
+          joinedAt: String(rawData.joinedAt || ''),
+          avatarColor: String(rawData.avatarColor || getAvatarColor(name)),
+          lastPing: Number(rawData.lastPing || Date.now())
+        });
       }
     });
     callback(list);
@@ -366,7 +390,8 @@ export async function endMeetingForAll(meetingId: string): Promise<void> {
 
   try {
     await updateDoc(roomRef, {
-      status: 'ended'
+      status: 'ended',
+      endedAt: Date.now()
     });
   } catch (err) {
     console.warn("End meeting error:", err);
@@ -380,7 +405,7 @@ export async function sendWebRTCSignal(
   meetingId: string,
   senderId: string,
   receiverId: string,
-  type: 'offer' | 'answer' | 'candidate',
+  type: 'offer' | 'answer' | 'candidate' | 'heartbeat' | 'heartbeat-ack',
   payload: string
 ): Promise<void> {
   const cleanId = (meetingId.trim() || DEFAULT_MEETING_ID).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
@@ -397,7 +422,7 @@ export async function sendWebRTCSignal(
       createdAt: Date.now()
     });
   } catch (err) {
-    // Silent catch
+    console.warn("WebRTC signaling write error:", err);
   }
 }
 
@@ -409,7 +434,7 @@ export async function purgeOldWebRTCSignals(meetingId: string): Promise<void> {
   const colRef = collection(db, 'meetings', cleanId, 'signals');
   try {
     const snap = await getDocs(colRef);
-    const expireTime = Date.now() - 30000;
+    const expireTime = Date.now() - 60000;
     for (const docSnap of snap.docs) {
       const data = docSnap.data();
       if (!data.createdAt || data.createdAt < expireTime) {
@@ -426,24 +451,18 @@ export function subscribeToWebRTCSignals(
 ): () => void {
   const cleanId = (meetingId.trim() || DEFAULT_MEETING_ID).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
   const colRef = collection(db, 'meetings', cleanId, 'signals');
-  const startTime = Date.now() - 60000;
-  const processedSignalIds = new Set<string>();
+  const processedIds = new Set<string>();
 
   return onSnapshot(colRef, (snap) => {
     snap.docChanges().forEach((change) => {
       if (change.type === 'added') {
         const data = change.doc.data();
-        const docId = change.doc.id;
-        if (
-          data.receiverId === currentUserId && 
-          data.createdAt >= startTime &&
-          !processedSignalIds.has(docId)
-        ) {
-          processedSignalIds.add(docId);
-          // Once received, delete document asynchronously to keep signals collection lean
+        if (data.receiverId === currentUserId && !processedIds.has(change.doc.id)) {
+          processedIds.add(change.doc.id);
+          // Delete signal after delivery to keep collection clean
           deleteDoc(change.doc.ref).catch(() => {});
           onSignal({
-            id: docId,
+            id: change.doc.id,
             senderId: data.senderId,
             receiverId: data.receiverId,
             type: data.type,
@@ -635,4 +654,3 @@ export async function clearAllAttendanceLogs(): Promise<void> {
     console.warn("Clear attendance logs error:", err);
   }
 }
-
